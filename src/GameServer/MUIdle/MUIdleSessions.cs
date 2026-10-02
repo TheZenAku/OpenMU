@@ -11,6 +11,7 @@ using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameServer.RemoteView;
+using MUnique.OpenMU.Persistence;
 
 /// <summary>
 /// The HUNT session lifecycle:
@@ -269,6 +270,12 @@ internal static class MUIdleSessions
         {
             await MUIdlePackets.SendJsonAsync(player, MUIdlePackets.OfflineSummarySubCode, summary.ToJson()).ConfigureAwait(false);
         }
+
+        // Points earned while auto build was off, or by a hunter without it, are spent now.
+        if (MUIdleSettings.Parse(state.SettingsJson).AutoBuild)
+        {
+            await MUIdleAutoBuild.DistributeAsync(player).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -280,11 +287,20 @@ internal static class MUIdleSessions
     public static ValueTask SendStateAsync(RemotePlayer player, MUIdleCharacterState state, bool resume = false)
     {
         var settings = MUIdleSettings.Parse(state.SettingsJson);
+
+        // The client knows items by their inventory slot, the locks reference the item ids.
+        var locked = settings.LockedItems.ToHashSet();
+        var lockedSlots = player.Inventory?.Items
+            .Where(item => locked.Contains(item.GetId()))
+            .Select(item => (int)item.ItemSlot)
+            .OrderBy(slot => slot)
+            .ToList() ?? [];
         var json = JsonSerializer.Serialize(new
         {
             hunt = state.HuntActive,
             resume,
             settings = JsonDocument.Parse(settings.ToJson()).RootElement,
+            lockedSlots,
         });
         return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
     }

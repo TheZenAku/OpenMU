@@ -82,6 +82,11 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
             requested.PreferredMap = requested.PreferredMap is { } map && player.GameContext.Configuration.Maps.Any(m => m.Number == map) ? map : null;
             state.SettingsJson = requested.ToJson();
         }).ConfigureAwait(false);
+        if (requested.AutoBuild)
+        {
+            await MUIdleAutoBuild.DistributeAsync(player).ConfigureAwait(false);
+        }
+
         await player.SaveProgressAsync().ConfigureAwait(false);
         await MUIdleSessions.SendStateAsync(player, await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false)).ConfigureAwait(false);
     }

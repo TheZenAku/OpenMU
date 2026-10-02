@@ -174,4 +174,36 @@ internal class PlayerContext : CachingEntityFrameworkContext, IPlayerContext
                 .ConfigureAwait(false);
         }
     }
+
+    /// <inheritdoc />
+    public async ValueTask<DataModel.Entities.MUIdleCharacterState?> GetMUIdleCharacterStateAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        using (this.RepositoryProvider.ContextStack.UseContext(this))
+        {
+            return await this.Context.Set<MUIdleCharacterState>()
+                .FirstOrDefaultAsync(state => state.CharacterId == characterId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<IReadOnlyList<(string LoginName, string CharacterName)>> GetMUIdleOfflineHuntersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using (this.RepositoryProvider.ContextStack.UseContext(this))
+        {
+            var hunters = await (
+                    from state in this.Context.Set<MUIdleCharacterState>().AsNoTracking()
+                    where state.HuntActive && state.OfflineSince != null
+                    from account in this.Context.Set<Account>().AsNoTracking()
+                    from character in account.RawCharacters
+                    where character.Id == state.CharacterId
+                    select new { account.LoginName, character.Name })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return hunters.Select(h => (h.LoginName, h.Name)).ToList();
+        }
+    }
 }

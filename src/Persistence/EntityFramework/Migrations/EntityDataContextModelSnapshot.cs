@@ -2770,6 +2770,35 @@ namespace MUnique.OpenMU.Persistence.EntityFramework.Migrations
                     b.ToTable("LevelBonus", "config");
                 });
 
+            modelBuilder.Entity("MUnique.OpenMU.Persistence.EntityFramework.Model.MUIdleCharacterState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CharacterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("HuntActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("OfflineSince")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OfflineStatisticsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SettingsJson")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CharacterId")
+                        .IsUnique();
+
+                    b.ToTable("MUIdleCharacterState", "data");
+                });
+
             modelBuilder.Entity("MUnique.OpenMU.Persistence.EntityFramework.Model.MagicEffectDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5203,6 +5232,15 @@ namespace MUnique.OpenMU.Persistence.EntityFramework.Migrations
                         .WithMany("RawBonusPerLevel")
                         .HasForeignKey("ItemLevelBonusTableId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MUnique.OpenMU.Persistence.EntityFramework.Model.MUIdleCharacterState", b =>
+                {
+                    b.HasOne("MUnique.OpenMU.Persistence.EntityFramework.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MUnique.OpenMU.Persistence.EntityFramework.Model.MagicEffectDefinition", b =>

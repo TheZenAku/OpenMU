@@ -132,4 +132,22 @@ public interface IPlayerContext : IContext
         Guid killerId,
         Guid victimId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the idle (HUNT) state of a character.
+    /// </summary>
+    /// <param name="characterId">The persistent identifier of the character.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The idle state; Otherwise, null, if the character never had one.</returns>
+    ValueTask<MUIdleCharacterState?> GetMUIdleCharacterStateAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the characters which were hunting offline, e.g. when the server stopped.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The login and character names of the offline hunters.</returns>
+    ValueTask<IReadOnlyList<(string LoginName, string CharacterName)>> GetMUIdleOfflineHuntersAsync(
+        CancellationToken cancellationToken = default);
 }

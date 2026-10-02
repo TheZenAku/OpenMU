@@ -115,4 +115,36 @@ public class PlayerInMemoryContext : InMemoryContext, IPlayerContext
             .ConfigureAwait(false);
         return abuses.FirstOrDefault(abuse => abuse.KillerId == killerId && abuse.VictimId == victimId);
     }
+
+    /// <inheritdoc />
+    public async ValueTask<DataModel.Entities.MUIdleCharacterState?> GetMUIdleCharacterStateAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        var states = await this.Provider.GetRepository<MUIdleCharacterState>()
+            .GetAllAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return states.FirstOrDefault(state => state.CharacterId == characterId);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<IReadOnlyList<(string LoginName, string CharacterName)>> GetMUIdleOfflineHuntersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var states = await this.Provider.GetRepository<MUIdleCharacterState>()
+            .GetAllAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var hunting = states.Where(s => s.HuntActive && s.OfflineSince is not null).Select(s => s.CharacterId).ToHashSet();
+        if (hunting.Count == 0)
+        {
+            return [];
+        }
+
+        var accounts = await this.Provider.GetRepository<Account>()
+            .GetAllAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return accounts
+            .SelectMany(a => a.Characters.Where(c => hunting.Contains(c.Id)).Select(c => (a.LoginName, c.Name)))
+            .ToList();
+    }
 }

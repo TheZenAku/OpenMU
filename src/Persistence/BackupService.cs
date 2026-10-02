@@ -38,6 +38,7 @@ public class BackupService : IBackupService
         ("Account_", typeof(BasicModel.Account)),
         ("GensMember_", typeof(BasicModel.GensMember)),
         ("GensAbuse_", typeof(BasicModel.GensAbuse)),
+        ("MUIdleCharacterState_", typeof(BasicModel.MUIdleCharacterState)),
         ("CastleSiegeData_", typeof(BasicModel.CastleSiegeData)),
     ];
 
@@ -91,6 +92,7 @@ public class BackupService : IBackupService
             await ExportAsync<Account, BasicModel.Account>(archive, "Account_", context, sharedHandler, cancellationToken).ConfigureAwait(false);
             await ExportAsync<GensMember, BasicModel.GensMember>(archive, "GensMember_", context, sharedHandler, cancellationToken).ConfigureAwait(false);
             await ExportAsync<GensAbuse, BasicModel.GensAbuse>(archive, "GensAbuse_", context, sharedHandler, cancellationToken).ConfigureAwait(false);
+            await ExportAsync<MUIdleCharacterState, BasicModel.MUIdleCharacterState>(archive, "MUIdleCharacterState_", context, sharedHandler, cancellationToken).ConfigureAwait(false);
         }
 
         await ExportAsync<CastleSiegeData, BasicModel.CastleSiegeData>(archive, "CastleSiegeData_", context, sharedHandler, cancellationToken).ConfigureAwait(false);
@@ -294,6 +296,11 @@ public class BackupService : IBackupService
         if (basicModelType == typeof(BasicModel.GensAbuse))
         {
             return deserializer.Deserialize<BasicModel.GensAbuse>(ms, referenceHandler);
+        }
+
+        if (basicModelType == typeof(BasicModel.MUIdleCharacterState))
+        {
+            return deserializer.Deserialize<BasicModel.MUIdleCharacterState>(ms, referenceHandler);
         }
 
         if (basicModelType == typeof(AdminUser))

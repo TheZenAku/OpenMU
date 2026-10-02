@@ -346,3 +346,12 @@ internal partial class GensAbuse : IConvertibleTo<BasicModel.GensAbuse>
         return this.Adapt<BasicModel.GensAbuse>();
     }
 }
+
+internal partial class MUIdleCharacterState : IConvertibleTo<BasicModel.MUIdleCharacterState>
+{
+    public BasicModel.MUIdleCharacterState Convert()
+    {
+        MapsterConfigurator.EnsureConfigured();
+        return this.Adapt<BasicModel.MUIdleCharacterState>();
+    }
+}

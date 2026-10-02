@@ -51,6 +51,11 @@ public class EntityDataContext : ExtendedTypeContext
     /// </summary>
     internal DbSet<GensAbuse> GensAbuses => this.Set<GensAbuse>();
 
+    /// <summary>
+    /// Gets the idle (HUNT) states of the characters.
+    /// </summary>
+    internal DbSet<MUIdleCharacterState> MUIdleCharacterStates => this.Set<MUIdleCharacterState>();
+
     /// <inheritdoc/>
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -101,6 +106,7 @@ public class EntityDataContext : ExtendedTypeContext
         modelBuilder.Entity<GameMapDefinition>().Apply();
         modelBuilder.Entity<GensMember>().Apply();
         modelBuilder.Entity<GensAbuse>().Apply();
+        modelBuilder.Entity<MUIdleCharacterState>().Apply();
         modelBuilder.Entity<ItemCrafting>().Apply();
         modelBuilder.Entity<ItemDefinition>().Apply();
         modelBuilder.Entity<ItemLevelBonusTable>().Apply();

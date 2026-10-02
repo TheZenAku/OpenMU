@@ -108,6 +108,9 @@ public static class MapsterConfigurator
         Mapster.TypeAdapterConfig.GlobalSettings.NewConfig<MUnique.OpenMU.DataModel.Entities.LetterBody, MUnique.OpenMU.DataModel.Entities.LetterBody>()
             .Include<LetterBody, BasicModel.LetterBody>();
 
+        Mapster.TypeAdapterConfig.GlobalSettings.NewConfig<MUnique.OpenMU.DataModel.Entities.MUIdleCharacterState, MUnique.OpenMU.DataModel.Entities.MUIdleCharacterState>()
+            .Include<MUIdleCharacterState, BasicModel.MUIdleCharacterState>();
+
         Mapster.TypeAdapterConfig.GlobalSettings.NewConfig<MUnique.OpenMU.DataModel.Entities.QuestMonsterKillRequirementState, MUnique.OpenMU.DataModel.Entities.QuestMonsterKillRequirementState>()
             .Include<QuestMonsterKillRequirementState, BasicModel.QuestMonsterKillRequirementState>();
 

@@ -112,6 +112,30 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
                 hunter.Logger.LogError(ex, "MUIdle: maintenance of the offline hunter {Name} failed.", hunter.Name);
             }
         }
+
+        // Upstream saves an online player when it leaves. A crash or a power cut (the VM rebooting)
+        // would lose the whole session, so the online players are saved regularly as well. The save
+        // takes the player's persistence lock, like its packet handling does.
+        if (configuration.OnlineSaveInterval > TimeSpan.Zero && now >= state.NextOnlineSaveUtc)
+        {
+            state.NextOnlineSaveUtc = now + configuration.OnlineSaveInterval;
+            foreach (var player in await gameContext.GetPlayersAsync().ConfigureAwait(false))
+            {
+                if (player is not RemoteView.RemotePlayer || player.PlayerState.CurrentState != PlayerState.EnteredWorld)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await player.SaveProgressAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    player.Logger.LogError(ex, "MUIdle: periodic save of {Player} failed.", player);
+                }
+            }
+        }
     }
 
     private sealed class ServerState
@@ -121,5 +145,7 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
         public DateTime NextRunUtc;
 
         public DateTime NextSaveUtc = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+
+        public DateTime NextOnlineSaveUtc = DateTime.UtcNow + TimeSpan.FromMinutes(5);
     }
 }

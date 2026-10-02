@@ -211,7 +211,12 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
 
         public ValueTask ItemAppearAsync(Item newItem)
         {
-            this._player.Statistics.AddCollectedItem();
+            // With a merchant dialog open, it's a purchase, not a pickup.
+            if (this._player.OpenedNpc is null)
+            {
+                this._player.Statistics.AddCollectedItem();
+            }
+
             return ValueTask.CompletedTask;
         }
 

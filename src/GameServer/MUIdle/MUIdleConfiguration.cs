@@ -55,4 +55,11 @@ public class MUIdleConfiguration
     /// </summary>
     [Display(Name = "Offline save interval", Description = "How often the progress of offline hunters is saved.")]
     public TimeSpan OfflineSaveInterval { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Gets or sets the interval in which the progress of online players is saved (upstream only saves
+    /// when a player leaves). Zero disables it.
+    /// </summary>
+    [Display(Name = "Online save interval", Description = "How often the progress of online players is saved, so a crash loses little; 0 = only on leaving.")]
+    public TimeSpan OnlineSaveInterval { get; set; } = TimeSpan.FromMinutes(5);
 }

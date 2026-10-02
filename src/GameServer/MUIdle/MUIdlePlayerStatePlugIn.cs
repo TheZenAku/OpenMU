@@ -30,6 +30,11 @@ public sealed class MUIdlePlayerStatePlugIn : IPlayerStateChangedPlugIn
                 {
                     await MUIdleSessions.OnHunterDisconnectingAsync(hunter).ConfigureAwait(false);
                 }
+                else if (currentState == PlayerState.EnteredWorld && hunter.CurrentMap?.Definition.Name is { } mapName)
+                {
+                    // Every map change (warps, merchant trips, respawns) ends in EnteredWorld.
+                    hunter.Statistics.AddMap(mapName);
+                }
 
                 return;
             }

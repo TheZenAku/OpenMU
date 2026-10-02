@@ -156,9 +156,6 @@ public sealed class OfflineSessionStatistics
     /// <summary>Counts a collected item.</summary>
     public void AddCollectedItem() => Interlocked.Increment(ref this._itemsCollected);
 
-    /// <summary>Takes back an item which appeared in the backpack by a purchase, not by a pickup.</summary>
-    public void RemoveCollectedItem() => Interlocked.Decrement(ref this._itemsCollected);
-
     /// <summary>Counts a sold item.</summary>
     public void AddSoldItem() => Interlocked.Increment(ref this._itemsSold);
 

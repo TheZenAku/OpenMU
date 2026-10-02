@@ -11,3 +11,6 @@ using System.Runtime.CompilerServices;
 [assembly: AssemblyTitle("MUnique.OpenMU.GameLogic")]
 
 [assembly: InternalsVisibleTo("MUnique.OpenMU.Tests")]
+
+// MUIdle: the HUNT offline sessions (GameServer/MUIdle) drive the BotNavigator.
+[assembly: InternalsVisibleTo("MUnique.OpenMU.GameServer")]

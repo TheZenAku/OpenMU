@@ -72,6 +72,50 @@ public sealed class OfflinePlayerManager
     }
 
     /// <summary>
+    /// Starts an offline player session for a character whose player is not (or no longer) connected,
+    /// e.g. after the connection of a hunting player dropped, or after a server restart. The character
+    /// is loaded fresh from the database, so the player's own session must have been saved before.
+    /// </summary>
+    /// <param name="loginName">The account login name.</param>
+    /// <param name="characterName">The name of the character to continue with.</param>
+    /// <param name="factory">Creates the (derived) offline player.</param>
+    /// <returns>The started offline player; null, if the account already has a session or it failed to start.</returns>
+    public async ValueTask<OfflinePlayer?> StartDetachedAsync(string loginName, string characterName, Func<OfflinePlayer> factory)
+    {
+        var offlinePlayer = factory();
+
+        // Atomically claim the slot, like StartAsync, so a concurrent login can hand the session over.
+        if (!this._activePlayers.TryAdd(loginName, offlinePlayer))
+        {
+            await offlinePlayer.DisposeAsync().ConfigureAwait(false);
+            return null;
+        }
+
+        try
+        {
+            if (!await offlinePlayer.InitializeAsync(loginName, characterName).ConfigureAwait(false))
+            {
+                await this.RemoveAndDisposeAsync(loginName, offlinePlayer).ConfigureAwait(false);
+                return null;
+            }
+
+            if (!this._activePlayers.TryGetValue(loginName, out var current) || !ReferenceEquals(current, offlinePlayer))
+            {
+                // A login took the session over while it was starting: it's stopped already, or gets stopped
+                // by the login. Either way, it must not keep running beside the returning player.
+                return null;
+            }
+
+            return offlinePlayer;
+        }
+        catch
+        {
+            await this.RemoveAndDisposeAsync(loginName, offlinePlayer).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Stops and removes the offline session for the given account if one exists.
     /// </summary>
     /// <param name="loginName">The account login name.</param>

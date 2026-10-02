@@ -182,9 +182,11 @@ internal class PlayerContext : CachingEntityFrameworkContext, IPlayerContext
     {
         using (this.RepositoryProvider.ContextStack.UseContext(this))
         {
-            return await this.Context.Set<MUIdleCharacterState>()
-                .FirstOrDefaultAsync(state => state.CharacterId == characterId, cancellationToken)
-                .ConfigureAwait(false);
+            // A state created in this context but not saved yet is only in the local view; querying
+            // the database would miss it and the caller would create a second one.
+            var set = this.Context.Set<MUIdleCharacterState>();
+            return set.Local.FirstOrDefault(state => state.CharacterId == characterId)
+                   ?? await set.FirstOrDefaultAsync(state => state.CharacterId == characterId, cancellationToken).ConfigureAwait(false);
         }
     }
 

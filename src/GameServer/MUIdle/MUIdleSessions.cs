@@ -230,9 +230,12 @@ internal static class MUIdleSessions
         }
 
         var configuration = GetConfiguration(player.GameContext);
-        var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+        var existing = await player.PersistenceContext.GetMUIdleCharacterStateAsync(character.Id).ConfigureAwait(false);
+        var state = existing ?? await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
         var summary = OfflineSessionStatistics.Parse(state.OfflineStatisticsJson);
-        var changed = false;
+
+        // A new state is saved right away, so it is in the database before anything else reads it.
+        var changed = existing is null;
         if (summary is not null)
         {
             if (summary.EndedUtc is null)

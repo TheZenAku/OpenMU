@@ -51,6 +51,19 @@ public class MUIdleConfiguration
     public int VipOfflineMinutes { get; set; }
 
     /// <summary>
+    /// Gets or sets the item drop rate multiplier (1 = upstream drop chances). The experience rate is
+    /// the game configuration's <c>ExperienceRate</c>.
+    /// </summary>
+    [Display(Name = "Item drop rate", Description = "Multiplier of item drops (1 = normal, 2 = twice as many, 0.5 = half).")]
+    public double ItemDropRate { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets the zen drop rate multiplier (1 = upstream amounts).
+    /// </summary>
+    [Display(Name = "Zen rate", Description = "Multiplier of dropped zen (1 = normal).")]
+    public double ZenRate { get; set; } = 1;
+
+    /// <summary>
     /// Gets or sets the interval in which the progress of the offline hunters is saved.
     /// </summary>
     [Display(Name = "Offline save interval", Description = "How often the progress of offline hunters is saved.")]

@@ -61,14 +61,16 @@ internal static class BotShoppingHandler
     /// or a potion stack is running low (and there is Zen to restock with).
     /// </summary>
     /// <param name="player">The bot player.</param>
-    public static bool NeedsShopping(OfflinePlayer player)
+    /// <param name="policy">What the trip may do; null for the unrestricted bot policy.</param>
+    public static bool NeedsShopping(OfflinePlayer player, BotNavigatorPolicy? policy = null)
     {
+        policy ??= BotNavigatorPolicy.Bot;
         if (player.Inventory is not { } inventory)
         {
             return false;
         }
 
-        if (IsUnderSlotPressure(inventory) && GetSellableJunk(player, inventory).Count > 0)
+        if (policy.SellJunk && IsUnderSlotPressure(inventory) && GetSellableJunk(player, inventory, policy).Count > 0)
         {
             return true;
         }
@@ -78,10 +80,22 @@ internal static class BotShoppingHandler
         // again, and again, and never hunts, which is the only way it could have earned the money.
         // The emergency refill (see BotNavigator) keeps it alive meanwhile, at a stock deliberately
         // below this target - which is exactly what made the loop permanent rather than occasional.
-        if (GetLowPotionKinds(player).Any()
-            && (player.Money >= MinPotionMoney || GetSellableJunk(player, inventory).Count > 0))
+        if (policy.BuyPotions
+            && GetLowPotionKinds(player).Any()
+            && (player.Money >= MinPotionMoney || (policy.SellJunk && GetSellableJunk(player, inventory, policy).Count > 0)))
         {
             return true;
+        }
+
+        // Without free supplies the gear only gets repaired at a merchant, so worn gear is a reason to go.
+        if (policy.RepairAtMerchant && !policy.FreeSupplies && NeedsRepair(player))
+        {
+            return true;
+        }
+
+        if (!policy.GearProgression)
+        {
+            return false;
         }
 
         // Both remaining triggers exist because a merchant trip is the ONLY moment a bot can turn its
@@ -132,8 +146,10 @@ internal static class BotShoppingHandler
     /// <param name="map">The game map.</param>
     /// <param name="merchantPosition">The position of the merchant.</param>
     /// <returns>True, if a merchant was found and the trade ran; false if no merchant is there.</returns>
-    public static async ValueTask<bool> TryTradeAsync(OfflinePlayer player, GameMap map, Point merchantPosition)
+    /// <param name="policy">What the trip may do; null for the unrestricted bot policy.</param>
+    public static async ValueTask<bool> TryTradeAsync(OfflinePlayer player, GameMap map, Point merchantPosition, BotNavigatorPolicy? policy = null)
     {
+        policy ??= BotNavigatorPolicy.Bot;
         var merchant = map.GetNpcsInRange(merchantPosition, 4)
             .FirstOrDefault(n => n.Definition is { ObjectKind: NpcObjectKind.PassiveNpc, MerchantStore.Items.Count: > 0 });
         if (merchant is null || player.Inventory is not { } inventory)
@@ -158,17 +174,17 @@ internal static class BotShoppingHandler
             // bot sitting at the money limit the Zen it spends is the only headroom its sales will
             // have. Selling first meant every sale was refused and the junk was destroyed instead,
             // while the repair a moment later freed enough room to have sold a good part of it.
-            var repaired = await RepairGearAsync(player).ConfigureAwait(false);
-            var (sold, unsold) = await SellJunkAsync(player, inventory).ConfigureAwait(false);
+            var repaired = policy.RepairAtMerchant ? await RepairGearAsync(player).ConfigureAwait(false) : 0;
+            var (sold, unsold) = policy.SellJunk ? await SellJunkAsync(player, inventory, policy).ConfigureAwait(false) : (0, []);
 
             var store = player.OpenedNpc.Definition.MerchantStore;
-            var boughtPotions = store is null ? 0 : await BuyPotionsAsync(player, store).ConfigureAwait(false);
-            var boughtJewels = store is null ? 0 : await BuyJewelsAsync(player, store).ConfigureAwait(false);
+            var boughtPotions = store is null || !policy.BuyPotions ? 0 : await BuyPotionsAsync(player, store).ConfigureAwait(false);
+            var boughtJewels = store is null || !policy.GearProgression ? 0 : await BuyJewelsAsync(player, store).ConfigureAwait(false);
 
             // Only now, with every purchase of this visit paid for, is it settled how much room the
             // money limit really leaves: each Zen spent above buys back the chance to sell one more
             // piece instead of destroying it.
-            var (soldLate, discarded) = await ClearUnsoldAsync(player, inventory, unsold).ConfigureAwait(false);
+            var (soldLate, discarded) = await ClearUnsoldAsync(player, inventory, unsold, policy).ConfigureAwait(false);
             sold += soldLate;
 
             // Logged even for a 0/0 visit: at Debug this is the bot's per-trip audit trail, telling
@@ -199,8 +215,17 @@ internal static class BotShoppingHandler
     /// Unlike a player, a bot cannot trade an excellent piece away, so hoarding one only silts up the
     /// backpack until the loot pickup stops entirely.
     /// </summary>
-    private static List<Item> GetSellableJunk(OfflinePlayer player, IStorage inventory)
+    private static List<Item> GetSellableJunk(OfflinePlayer player, IStorage inventory, BotNavigatorPolicy policy)
     {
+        if (policy.IsJunk is { } isJunk)
+        {
+            return inventory.Items
+                .Where(item => item.ItemSlot >= InventoryConstants.EquippableSlotsCount
+                               && item.Definition is { IsSellableToNpc: true, IsAmmunition: false }
+                               && isJunk(item))
+                .ToList();
+        }
+
         var stockLimit = BotJewelHandler.GetStockLimit(player);
         var keptJewels = new Dictionary<ItemIdentifier, int>();
         var junk = new List<Item>();
@@ -258,9 +283,9 @@ internal static class BotShoppingHandler
     /// captures as much of its loot as fits. What the limit refuses is handed back to the caller: it is
     /// offered once more after the purchases of this visit have freed some room.
     /// </summary>
-    private static async ValueTask<(int Sold, List<Item> Unsold)> SellJunkAsync(OfflinePlayer player, IStorage inventory)
+    private static async ValueTask<(int Sold, List<Item> Unsold)> SellJunkAsync(OfflinePlayer player, IStorage inventory, BotNavigatorPolicy policy)
     {
-        var junk = GetSellableJunk(player, inventory);
+        var junk = GetSellableJunk(player, inventory, policy);
 
         // A looted orb or scroll waiting for the next learn pass is not an upgrade, so the classifier
         // above files it as junk - pull it back out here, where reading the skill list is safe: this
@@ -302,7 +327,7 @@ internal static class BotShoppingHandler
     /// kind the bot cannot use at all, or the part above its stock limit, has no use to it whatsoever,
     /// and waiting for slot pressure just parks it in the backpack for hours.
     /// </summary>
-    private static async ValueTask<(int Sold, int Discarded)> ClearUnsoldAsync(OfflinePlayer player, IStorage inventory, List<Item> unsold)
+    private static async ValueTask<(int Sold, int Discarded)> ClearUnsoldAsync(OfflinePlayer player, IStorage inventory, List<Item> unsold, BotNavigatorPolicy policy)
     {
         if (unsold.Count == 0)
         {
@@ -321,7 +346,7 @@ internal static class BotShoppingHandler
                 continue;
             }
 
-            if (underPressure || IsDeadWeight(item))
+            if (policy.DestroyUnsellable && (underPressure || IsDeadWeight(item)))
             {
                 await player.DestroyInventoryItemAsync(item).ConfigureAwait(false);
                 discarded++;
@@ -566,6 +591,31 @@ internal static class BotShoppingHandler
 
     private static bool Matches(Item item, ItemIdentifier identifier)
         => item.Definition is { } definition && identifier == new ItemIdentifier(definition.Number, definition.Group);
+
+    /// <summary>
+    /// Determines whether a piece of the equipped gear (pets excluded) wore down to a third of its
+    /// durability, which is a reason to visit a merchant when nothing tops the gear up for free.
+    /// </summary>
+    private static bool NeedsRepair(OfflinePlayer player)
+    {
+        if (player.Inventory is not { } inventory)
+        {
+            return false;
+        }
+
+        for (var slot = InventoryConstants.FirstEquippableItemSlotIndex; slot <= InventoryConstants.LastEquippableItemSlotIndex; slot++)
+        {
+            if (slot != InventoryConstants.PetSlot
+                && inventory.GetItem(slot) is { } item
+                && item.CanBeRepaired()
+                && item.Durability() * 3 < item.GetMaximumDurabilityOfOnePiece())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsUnderSlotPressure(IStorage inventory)
         => inventory.FreeSlots.Count() < FreeSlotPressure;

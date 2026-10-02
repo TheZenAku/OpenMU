@@ -302,6 +302,7 @@ internal sealed class BotNavigator : AsyncDisposable
     private int _minWarpLevel = FallbackMinWarpLevel;
     private Guid _leaderMapId;
     private DateTimeOffset _leaderOnMapSinceUtc = DateTimeOffset.MinValue;
+    private BotNavigatorPolicy _policy = BotNavigatorPolicy.Bot;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BotNavigator"/> class.
@@ -315,6 +316,17 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="BotNavigator"/> class.
     /// </summary>
+    /// <param name="player">The offline player.</param>
+    /// <param name="policy">What the navigator may do for the player.</param>
+    public BotNavigator(OfflinePlayer player, BotNavigatorPolicy policy)
+        : this(player, TimeProvider.System)
+    {
+        this._policy = policy;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BotNavigator"/> class.
+    /// </summary>
     /// <param name="player">The bot player.</param>
     /// <param name="timeProvider">The time provider.</param>
     internal BotNavigator(OfflinePlayer player, TimeProvider timeProvider)
@@ -322,6 +334,11 @@ internal sealed class BotNavigator : AsyncDisposable
         this._player = player;
         this._timeProvider = timeProvider;
     }
+
+    /// <summary>
+    /// Gets what this navigator may do for its player.
+    /// </summary>
+    public BotNavigatorPolicy Policy => this._policy;
 
     /// <summary>
     /// Starts the periodic navigation evaluation. The start delay is jittered per bot, so hundreds of
@@ -713,7 +730,10 @@ internal sealed class BotNavigator : AsyncDisposable
 
         // Party bookkeeping: answer a pending invitation from a player once its human-like delay
         // passed (see BotPartyHandler).
-        await BotPartyHandler.ProcessAsync(this._player).ConfigureAwait(false);
+        if (this._policy.Parties)
+        {
+            await BotPartyHandler.ProcessAsync(this._player).ConfigureAwait(false);
+        }
 
         // Make sure the bot always carries healing and mana potions. Without them, the offline handlers
         // have nothing to drink: the bot dies to sustained damage, and casters degrade to weak melee
@@ -722,12 +742,16 @@ internal sealed class BotNavigator : AsyncDisposable
         // mounts item power-ups into the attribute system - and any attribute mutation from this
         // (separate) timer racing the combat handler's recalculations can corrupt the attribute
         // graph permanently (see PendingBotActions).
-        this._player.PendingBotActions.Enqueue(() => this.EnsurePotionsAsync());
+        // A player's character never gets supplies for free - it buys them (see BotShoppingHandler).
+        if (this._policy.FreeSupplies)
+        {
+            this._player.PendingBotActions.Enqueue(() => this.EnsurePotionsAsync());
+        }
 
         // Periodically evaluate looted gear and equip upgrades (drops the replaced piece), so the bot's
         // equipment progresses over its lifetime like a real player's. Queued for the same reason:
         // equipping mounts/unmounts item power-ups.
-        if (DateTime.UtcNow >= this._nextEquipCheckUtc)
+        if (this._policy.GearProgression && DateTime.UtcNow >= this._nextEquipCheckUtc)
         {
             this._nextEquipCheckUtc = DateTime.UtcNow + EquipCheckInterval;
             this._player.PendingBotActions.Enqueue(() => BotEquipmentHandler.TryEquipUpgradesAsync(this._player));
@@ -751,7 +775,7 @@ internal sealed class BotNavigator : AsyncDisposable
 
         // Resolved here (not just before the follow branch) so the tether below holds on every tick,
         // including ticks that return early while walking or on an errand.
-        var leaderToFollow = this.GetPartyLeaderToFollow();
+        var leaderToFollow = this._policy.Parties ? this.GetPartyLeaderToFollow() : null;
         var isTetheredToLeader = leaderToFollow is not null
             && ReferenceEquals(leaderToFollow.CurrentMap, map)
             && !inSafezone;
@@ -814,7 +838,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // the bot has reached the required level, so hunting on only gains it nothing until it resets.
         // It keeps fighting normally through the random grace delay, then resets and starts its next
         // cycle (see BotResetHandler).
-        if (await this.TryResetCharacterAsync().ConfigureAwait(false))
+        if (this._policy.Resets && await this.TryResetCharacterAsync().ConfigureAwait(false))
         {
             return;
         }
@@ -823,7 +847,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // MuHelper tick like the level-up progression - learning a skill mutates the skill list, which
         // must never happen while the combat handler enumerates it (see PendingBotActions). The master
         // evolution itself is handled by the feature plugin's maintenance pass because it restarts the bot.
-        if (BotMasterHandler.HasMasterPointsToSpend(this._player))
+        if (this._policy.GearProgression && BotMasterHandler.HasMasterPointsToSpend(this._player))
         {
             this._player.PendingBotActions.Enqueue(() => BotMasterHandler.TrySpendMasterPointsAsync(this._player));
         }
@@ -831,7 +855,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // A shopping trip (selling junk loot, restocking potions with Zen) runs before everything else,
         // so it completes even for party members - the follow logic below would otherwise pull them
         // back to the leader mid-trade.
-        if (await this.TryShoppingAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
+        if (this._policy.Shopping && await this.TryShoppingAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
         {
             return;
         }
@@ -839,7 +863,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // A buff trip (claiming the free defense/damage buff a dialog NPC like the Elf Soldier offers)
         // is an errand like shopping - it also completes even for party members, and does not mix with
         // the follow logic below pulling the bot back to the leader mid-visit.
-        if (await this.TryBuffTripAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
+        if (this._policy.BuffTrips && await this.TryBuffTripAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
         {
             return;
         }
@@ -849,7 +873,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // the place of its death. A leader on a revenge march still drags its followers along - the
         // posse a wronged player would bring. Once the revenge is spent or times out, the bot falls
         // back into the routine (and a follower rejoins its group).
-        if (await this.TryRevengeMarchAsync(map, cancellationToken).ConfigureAwait(false))
+        if (this._policy.Revenge && await this.TryRevengeMarchAsync(map, cancellationToken).ConfigureAwait(false))
         {
             return;
         }
@@ -1001,7 +1025,7 @@ internal sealed class BotNavigator : AsyncDisposable
         }
 
         this._nextShoppingCheckUtc = DateTime.UtcNow + ShoppingCheckInterval;
-        if (!BotShoppingHandler.NeedsShopping(this._player))
+        if (!BotShoppingHandler.NeedsShopping(this._player, this._policy))
         {
             return false;
         }
@@ -1050,7 +1074,8 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private async ValueTask TradeAndUpgradeAsync(GameMap map, Point merchantPosition)
     {
-        if (await BotShoppingHandler.TryTradeAsync(this._player, map, merchantPosition).ConfigureAwait(false))
+        if (await BotShoppingHandler.TryTradeAsync(this._player, map, merchantPosition, this._policy).ConfigureAwait(false)
+            && this._policy.GearProgression)
         {
             await BotJewelHandler.TryUpgradeGearAsync(this._player).ConfigureAwait(false);
         }
@@ -1437,6 +1462,11 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <returns>True, if a warp was performed.</returns>
     private async ValueTask<bool> TryWarpToBetterMapAsync()
     {
+        if (!this._policy.WarpBetweenMaps)
+        {
+            return false;
+        }
+
         var botLevel = this.GetBotLevel();
         var plainLevel = (int)(this._player.Attributes?[Stats.Level] ?? 1);
 

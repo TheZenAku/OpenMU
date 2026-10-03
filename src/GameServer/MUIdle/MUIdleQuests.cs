@@ -243,11 +243,14 @@ internal static class MUIdleQuests
 
         var active = state?.ActiveQuest is { } running && Equals(running, quest);
         var giver = givers.FirstOrDefault(m => m.Quests.Contains(quest));
-        var stand = giver is null
-            ? default
+        // A giver may stand in several towns (Marlon): the one on the character's map, like a player picks.
+        var stands = giver is null
+            ? []
             : configuration.Maps
                 .SelectMany(map => map.MonsterSpawns.Select(spawn => (Map: (GameMapDefinition?)map, Spawn: (MonsterSpawnArea?)spawn)))
-                .FirstOrDefault(x => x.Spawn!.MonsterDefinition == giver);
+                .Where(x => x.Spawn!.MonsterDefinition == giver)
+                .ToList();
+        var stand = stands.FirstOrDefault(x => x.Map == player.CurrentMap?.Definition) is { Map: not null } here ? here : stands.FirstOrDefault();
         return new LineState(quest, state, active, giver, stand);
     }
 

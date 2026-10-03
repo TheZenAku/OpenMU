@@ -8,6 +8,8 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel.Configuration;
+using MUnique.OpenMU.DataModel.Configuration.Items;
+using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Offline;
@@ -32,6 +34,9 @@ internal enum EventRefusal
 
     /// <summary>The event level asks for a master class.</summary>
     Master,
+
+    /// <summary>An equipped item the event does not allow (Chaos Castle: mounts, transformation rings).</summary>
+    Equipment,
 }
 
 /// <summary>
@@ -80,7 +85,18 @@ internal static class MUIdleEvents
     /// <param name="type">The event type.</param>
     /// <returns>The fitting definition (if any) and the refusal (if any).</returns>
     public static (MiniGameDefinition? Definition, EventRefusal? Refusal) Judge(Player player, MiniGameType type)
+        => Judge(player, type, out _);
+
+    /// <summary>
+    /// Judges an event for the player, naming the equipped item it refuses, if that is the reason.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="type">The event type.</param>
+    /// <param name="forbiddenItem">The name of the equipped item the event refuses.</param>
+    /// <returns>The fitting definition (if any) and the refusal (if any).</returns>
+    public static (MiniGameDefinition? Definition, EventRefusal? Refusal) Judge(Player player, MiniGameType type, out string? forbiddenItem)
     {
+        forbiddenItem = null;
         if (player.SelectedCharacter is not { CharacterClass: { } characterClass } character)
         {
             return (null, EventRefusal.Level);
@@ -114,7 +130,32 @@ internal static class MUIdleEvents
             return (definition, EventRefusal.Zen);
         }
 
+        if (type == MiniGameType.ChaosCastle
+            && player.Inventory?.EquippedItems.FirstOrDefault(IsForbiddenInChaosCastle) is { } forbidden)
+        {
+            forbiddenItem = forbidden.Definition?.Name.ValueInNeutralLanguage;
+            return (definition, EventRefusal.Equipment);
+        }
+
         return (definition, null);
+    }
+
+    /// <summary>
+    /// The rule of upstream's ChaosCastleContext.IsItemAllowedToEquip, judged before the entry (whose
+    /// refusal an offline hunter never sees): no Uniria, Dinorant, Fenrir or transformation ring.
+    /// </summary>
+    private static bool IsForbiddenInChaosCastle(Item item)
+    {
+        if (item.Definition is not { } definition)
+        {
+            return false;
+        }
+
+        var identifier = new ItemIdentifier(definition.Number, definition.Group);
+        return identifier == ItemConstants.Uniria
+               || identifier == ItemConstants.Dinorant
+               || identifier == ItemConstants.Fenrir
+               || item.IsTransformationRing();
     }
 
     /// <summary>
@@ -127,7 +168,7 @@ internal static class MUIdleEvents
     {
         foreach (var type in Joinable)
         {
-            var (_, refusal) = Judge(player, type);
+            var (_, refusal) = Judge(player, type, out var forbiddenItem);
             yield return new
             {
                 key = Key(type),
@@ -139,8 +180,10 @@ internal static class MUIdleEvents
                     EventRefusal.Zen => "zen",
                     EventRefusal.Master => "master",
                     EventRefusal.Level => "level",
+                    EventRefusal.Equipment => "equipment",
                     _ => null,
                 },
+                item = forbiddenItem,
             };
         }
     }

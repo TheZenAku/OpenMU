@@ -5,18 +5,22 @@
 namespace MUnique.OpenMU.GameServer.MUIdle;
 
 using System.Threading;
+using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel;
+using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Bots;
+using MUnique.OpenMU.GameLogic.MiniGames;
 using MUnique.OpenMU.GameLogic.Offline;
-using MUnique.OpenMU.Pathfinding;
+using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.GameLogic.Views.Character;
 using MUnique.OpenMU.GameLogic.Views.Inventory;
 using MUnique.OpenMU.GameLogic.Views.World;
 using MUnique.OpenMU.GameServer.RemoteView.MuHelper;
+using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.PlugIns;
 
 /// <summary>
@@ -196,7 +200,8 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
     /// would send to its client) into statistics.
     /// </summary>
     private sealed class TelemetryViewPlugInContainer : ICustomPlugInContainer<IViewPlugIn>,
-        IAddExperiencePlugIn, IUpdateMoneyPlugIn, IItemAppearPlugIn, IItemDurabilityChangedPlugIn, IMapChangePlugIn
+        IAddExperiencePlugIn, IUpdateMoneyPlugIn, IItemAppearPlugIn, IItemDurabilityChangedPlugIn, IMapChangePlugIn,
+        IShowMiniGameEnterResultPlugIn
     {
         private readonly HuntOfflinePlayer _player;
         private readonly ICustomPlugInContainer<IViewPlugIn> _inner;
@@ -216,6 +221,14 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
             }
 
             return this._inner.GetPlugIn<T>();
+        }
+
+        public ValueTask ShowResultAsync(MiniGameType miniGameType, EnterResult enterResult)
+        {
+            // What a player would read on screen, kept: an offline hunter has no screen.
+            this._player.GameContext.LoggerFactory.CreateLogger("MUnique.OpenMU.GameServer.MUIdle.Hunt").LogDebug(
+                "MUIdle hunt {Character}: {Event} entry {Result}.", this._player.Name, miniGameType, enterResult);
+            return this._inner.GetPlugIn<IShowMiniGameEnterResultPlugIn>()?.ShowResultAsync(miniGameType, enterResult) ?? ValueTask.CompletedTask;
         }
 
         public ValueTask AddExperienceAsync(int gainedExperience, IAttackable? killedObject, ExperienceType experienceType)

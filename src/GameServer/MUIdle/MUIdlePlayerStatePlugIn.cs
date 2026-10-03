@@ -51,7 +51,7 @@ public sealed class MUIdlePlayerStatePlugIn : IPlayerStateChangedPlugIn
             else if (currentState == PlayerState.EnteredWorld)
             {
                 // A respawn or a map change.
-                MUIdleHuntTracker.OnEnteredWorld(remotePlayer);
+                await MUIdleSessions.OnMapEnteredAsync(remotePlayer).ConfigureAwait(false);
             }
             else if (currentState == PlayerState.Disconnected)
             {

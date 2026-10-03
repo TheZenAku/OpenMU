@@ -220,6 +220,26 @@ internal static class MUIdleSessions
     }
 
     /// <summary>
+    /// Called when a player with a client entered a map after a respawn, warp or map change.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    public static async ValueTask OnMapEnteredAsync(RemotePlayer player)
+    {
+        // Sent to the pinned map by HUNT: the client walks to a hunting ground there, then resumes HUNT.
+        if (MUIdleHuntTracker.TryTakePinnedArrival(player)
+            && player.SelectedCharacter is { } character
+            && player.CurrentMap?.Definition is { } map)
+        {
+            MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
+            var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+            await SendStateAsync(player, state, resume: true, ground: MUIdleHuntMaps.PickGround(player, map)).ConfigureAwait(false);
+            return;
+        }
+
+        MUIdleHuntTracker.OnEnteredWorld(player);
+    }
+
+    /// <summary>
     /// Called when a real player entered the world: shows the summary of a finished offline session,
     /// sends the idle state and resumes HUNT.
     /// </summary>

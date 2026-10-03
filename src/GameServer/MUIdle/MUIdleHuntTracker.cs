@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.GameLogic;
+using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Bots;
 using MUnique.OpenMU.GameServer.RemoteView;
 
@@ -49,6 +50,9 @@ internal static class MUIdleHuntTracker
 {
     /// <summary>How long a judged pinned map stays judged while nothing else changes (kills report often).</summary>
     private static readonly TimeSpan RefusalCheckInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a warp to the pinned map may take before the trip is forgotten (e.g. the warp was refused).</summary>
+    private static readonly TimeSpan ArrivalTimeout = TimeSpan.FromMinutes(2);
 
     private static readonly ConditionalWeakTable<Player, Entry> Entries = new();
 
@@ -106,18 +110,54 @@ internal static class MUIdleHuntTracker
     }
 
     /// <summary>
-    /// A player with a client entered a map (respawn, warp, map change): back to hunting or idle.
+    /// Remembers that the player was sent to its pinned map. The warp completes when the client has
+    /// loaded the map, so the hunt goes on from <see cref="TryTakePinnedArrival"/> at the map entry.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="mapNumber">The pinned map.</param>
+    public static void ExpectPinnedArrival(Player player, int mapNumber)
+    {
+        var entry = Entries.GetValue(player, _ => new Entry());
+        lock (entry)
+        {
+            entry.ArrivalMap = mapNumber;
+            entry.ArrivalExpectedUtc = DateTime.UtcNow;
+        }
+    }
+
+    /// <summary>
+    /// Whether the player just entered the pinned map it was sent to (and forgets the trip).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns><c>true</c> when the trip ended on the pinned map.</returns>
+    public static bool TryTakePinnedArrival(Player player)
+    {
+        var entry = Entries.GetValue(player, _ => new Entry());
+        lock (entry)
+        {
+            if (entry.ArrivalMap is not { } map)
+            {
+                return false;
+            }
+
+            var arrived = player.CurrentMap?.Definition.Number == map;
+            if (arrived || DateTime.UtcNow - entry.ArrivalExpectedUtc > ArrivalTimeout)
+            {
+                entry.ArrivalMap = null;
+            }
+
+            return arrived;
+        }
+    }
+
+    /// <summary>
+    /// A player with a client entered a map (respawn, warp, map change): hunting when its MU Helper runs, else idle.
     /// </summary>
     /// <param name="player">The player.</param>
     public static void OnEnteredWorld(Player player)
     {
-        var entry = Entries.GetValue(player, _ => new Entry());
-        bool hunt;
-        lock (entry)
-        {
-            hunt = entry.HuntIntent;
-        }
-
+        // The server's own word on the MU Helper beats the intent: after a warp into town it stops.
+        var hunt = player.Attributes?[Stats.IsMuHelperActive] > 0;
         Report(player, hunt ? HuntActivityKind.Hunting : HuntActivityKind.Idle);
     }
 
@@ -248,6 +288,10 @@ internal static class MUIdleHuntTracker
         public int? PinnedMap { get; set; }
 
         public bool HuntIntent { get; set; }
+
+        public int? ArrivalMap { get; set; }
+
+        public DateTime ArrivalExpectedUtc { get; set; }
 
         public HuntMapRefusal? PinnedRefusal { get; set; }
 

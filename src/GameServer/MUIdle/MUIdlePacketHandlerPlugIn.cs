@@ -134,31 +134,42 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
         using var document = JsonDocument.Parse(payload);
         var hunt = document.RootElement.TryGetProperty("hunt", out var huntElement) && huntElement.ValueKind == JsonValueKind.True;
         MUIdleSettings? settings = null;
-        MUIdleCharacterState? stored = null;
         await player.RunPersistenceExclusiveAsync(async () =>
         {
             var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
             state.HuntActive = hunt;
             settings = MUIdleSettings.Parse(state.SettingsJson);
-            stored = state;
         }).ConfigureAwait(false);
         await player.SaveProgressAsync().ConfigureAwait(false);
         MUIdleHuntTracker.SetHuntIntent(player, hunt);
 
+        if (!hunt || settings is not { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned })
+        {
+            return;
+        }
+
+        // Already on the pinned map, but in town: walk out to a hunting ground, then HUNT.
+        if (player.CurrentMap?.Definition is { } current && current.Number == pinned)
+        {
+            if (player.IsAtSafezone())
+            {
+                MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
+                var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+                await MUIdleSessions.SendStateAsync(player, state, resume: true, ground: MUIdleHuntMaps.PickGround(player, current)).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         // The same rule as offline: with a pinned map elsewhere, HUNT starts by going there.
-        if (hunt
-            && settings is { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned }
-            && player.CurrentMap?.Definition.Number != pinned
-            && MUIdleHuntMaps.Evaluate(player, pinned) is { Warp: { } warp } target)
+        if (MUIdleHuntMaps.Evaluate(player, pinned) is { Warp: { } warp } target)
         {
             MUIdleHuntTracker.Report(player, HuntActivityKind.Warping, target.Map.Name.ValueInNeutralLanguage);
 
-            // Through the player action: the player pays the fare and passes every check of a warp.
+            // Through the player action: the player pays the fare and passes every check of a warp. The
+            // map change completes when the client loaded the map; MUIdleSessions.OnMapEnteredAsync goes on.
+            MUIdleHuntTracker.ExpectPinnedArrival(player, pinned);
             await Warp.WarpToAsync(player, warp).ConfigureAwait(false);
-            if (player.CurrentMap?.Definition.Number == pinned)
-            {
-                await MUIdleSessions.SendStateAsync(player, stored!, resume: true, ground: MUIdleHuntMaps.PickGround(player, target.Map)).ConfigureAwait(false);
-            }
         }
     }
 }

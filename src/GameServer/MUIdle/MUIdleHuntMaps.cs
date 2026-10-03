@@ -113,15 +113,16 @@ internal static class MUIdleHuntMaps
     }
 
     /// <summary>
-    /// Picks where on a map to hunt: the middle of a spawn area of the strongest monsters the player can
-    /// safely fight (the navigator's own safety rule), else of the weakest ones.
+    /// Picks where on a map to hunt: in a spawn area of the strongest monsters the player can safely
+    /// fight (the navigator's own safety rule), else of the weakest ones - the walkable tile outside the
+    /// safezone nearest to the area's middle (the middle itself may be a wall or water).
     /// </summary>
     /// <param name="player">The player.</param>
-    /// <param name="map">The map.</param>
-    /// <returns>The point, or <c>null</c> when the map has no permanent monsters.</returns>
-    public static Point? PickGround(Player player, GameMapDefinition map)
+    /// <param name="map">The map, with its terrain.</param>
+    /// <returns>The point, or <c>null</c> when the map has no permanent monsters or no walkable tile there.</returns>
+    public static Point? PickGround(Player player, GameMap map)
     {
-        var areas = map.MonsterSpawns
+        var areas = map.Definition.MonsterSpawns
             .Where(a => a is { Quantity: > 0, SpawnTrigger: SpawnTrigger.Automatic, MonsterDefinition.ObjectKind: NpcObjectKind.Monster })
             .Select(a => (Area: a, Level: MonsterLevel(a.MonsterDefinition!)))
             .Where(x => x.Level > 0)
@@ -134,7 +135,24 @@ internal static class MUIdleHuntMaps
         var safe = areas.Where(x => CombatHandler.IsSafeTarget(player, x.Area.MonsterDefinition!)).ToList();
         var pick = safe.Count > 0 ? safe.MaxBy(x => x.Level) : areas.MinBy(x => x.Level);
         var area = pick.Area;
-        return new Point((byte)((area.X1 + area.X2) / 2), (byte)((area.Y1 + area.Y2) / 2));
+        int centerX = (area.X1 + area.X2) / 2, centerY = (area.Y1 + area.Y2) / 2;
+        var terrain = map.Terrain;
+        Point? best = null;
+        var bestDistance = int.MaxValue;
+        for (var x = (int)area.X1; x <= area.X2; x++)
+        {
+            for (var y = (int)area.Y1; y <= area.Y2; y++)
+            {
+                var distance = Math.Abs(x - centerX) + Math.Abs(y - centerY);
+                if (distance < bestDistance && terrain.WalkMap[x, y] && !terrain.SafezoneMap[x, y])
+                {
+                    best = new Point((byte)x, (byte)y);
+                    bestDistance = distance;
+                }
+            }
+        }
+
+        return best;
     }
 
     private static int MonsterLevel(MonsterDefinition definition)

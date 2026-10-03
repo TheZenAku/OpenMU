@@ -228,7 +228,7 @@ internal static class MUIdleSessions
         // Sent to the pinned map by HUNT: the client walks to a hunting ground there, then resumes HUNT.
         if (MUIdleHuntTracker.TryTakePinnedArrival(player)
             && player.SelectedCharacter is { } character
-            && player.CurrentMap?.Definition is { } map)
+            && player.CurrentMap is { } map)
         {
             MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
             var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);

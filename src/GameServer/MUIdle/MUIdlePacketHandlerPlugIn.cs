@@ -150,7 +150,7 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
         }
 
         // Already on the pinned map, but in town: walk out to a hunting ground, then HUNT.
-        if (player.CurrentMap?.Definition is { } current && current.Number == pinned)
+        if (player.CurrentMap is { } current && current.Definition.Number == pinned)
         {
             if (player.IsAtSafezone())
             {

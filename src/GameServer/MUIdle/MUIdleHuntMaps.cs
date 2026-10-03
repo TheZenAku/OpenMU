@@ -113,6 +113,68 @@ internal static class MUIdleHuntMaps
     }
 
     /// <summary>
+    /// Gets the warp to the map whose whole landing area walks to the target - floors which share one
+    /// map id (Dungeon, Lost Tower) are joined only by inner gates - the cheapest such warp the player may
+    /// take and pay; <c>null</c> when none.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="map">The map, with its terrain.</param>
+    /// <param name="target">The target point.</param>
+    /// <returns>The warp, or <c>null</c>.</returns>
+    public static WarpInfo? ReachingWarp(Player player, GameMap map, Point target)
+    {
+        if (Evaluate(player, map.Definition.Number) is not { Refusal: null })
+        {
+            return null;
+        }
+
+        var steps = MUIdleWorldBossPlugIn.WalkSteps(map, [target]);
+        var walk = map.Terrain.WalkMap;
+        var level = (int)(player.Attributes?[Stats.Level] ?? 1);
+        bool Reaches(ExitGate gate)
+        {
+            var any = false;
+            for (var x = (int)gate.X1; x <= gate.X2; x++)
+            {
+                for (var y = (int)gate.Y1; y <= gate.Y2; y++)
+                {
+                    if (!walk[x, y])
+                    {
+                        continue;
+                    }
+
+                    if (steps[x, y] < 0)
+                    {
+                        return false;
+                    }
+
+                    any = true;
+                }
+            }
+
+            return any;
+        }
+
+        return player.GameContext.Configuration.WarpList
+            .Where(w => w.Gate?.Map?.Number == map.Definition.Number
+                        && (player.SelectedCharacter?.GetEffectiveMoveLevelRequirement(w.LevelRequirement) ?? w.LevelRequirement) <= level
+                        && player.Money >= w.Costs
+                        && Reaches(w.Gate!))
+            .OrderBy(w => w.Costs)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Whether a walk joins two points of the map.
+    /// </summary>
+    /// <param name="map">The map, with its terrain.</param>
+    /// <param name="from">The start.</param>
+    /// <param name="to">The destination.</param>
+    /// <returns><c>true</c>, if a walk joins them.</returns>
+    public static bool IsWalkable(GameMap map, Point from, Point to)
+        => MUIdleWorldBossPlugIn.WalkSteps(map, [to])[from.X, from.Y] >= 0;
+
+    /// <summary>
     /// Picks where on a map to hunt: in a spawn area of the strongest monsters the player can safely
     /// fight (the navigator's own safety rule), else of the weakest ones - the walkable tile outside the
     /// safezone nearest to the area's middle (the middle itself may be a wall or water).

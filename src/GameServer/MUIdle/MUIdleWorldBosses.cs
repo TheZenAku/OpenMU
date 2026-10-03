@@ -403,6 +403,27 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
             return null;
         }
 
+        var landing = new List<Point>();
+        for (var x = (int)gate.X1; x <= gate.X2; x++)
+        {
+            for (var y = (int)gate.Y1; y <= gate.Y2; y++)
+            {
+                landing.Add(new Point((byte)x, (byte)y));
+            }
+        }
+
+        return WalkSteps(gameMap, landing);
+    }
+
+    /// <summary>
+    /// The walking steps from the nearest of the start tiles to every tile (-1: not reachable on foot;
+    /// floors which share one map id are not joined).
+    /// </summary>
+    /// <param name="gameMap">The map, with its terrain.</param>
+    /// <param name="starts">The start tiles; unwalkable ones are skipped.</param>
+    /// <returns>The steps per tile.</returns>
+    internal static int[,] WalkSteps(GameMap gameMap, IEnumerable<Point> starts)
+    {
         var walk = gameMap.Terrain.WalkMap;
         var steps = new int[256, 256];
         for (var x = 0; x < 256; x++)
@@ -414,15 +435,12 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         }
 
         var queue = new Queue<(int X, int Y)>();
-        for (var x = (int)gate.X1; x <= gate.X2; x++)
+        foreach (var start in starts)
         {
-            for (var y = (int)gate.Y1; y <= gate.Y2; y++)
+            if (walk[start.X, start.Y] && steps[start.X, start.Y] < 0)
             {
-                if (walk[x, y] && steps[x, y] < 0)
-                {
-                    steps[x, y] = 0;
-                    queue.Enqueue((x, y));
-                }
+                steps[start.X, start.Y] = 0;
+                queue.Enqueue((start.X, start.Y));
             }
         }
 

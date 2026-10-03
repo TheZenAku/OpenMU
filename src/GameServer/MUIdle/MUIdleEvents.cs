@@ -251,7 +251,9 @@ internal static class MUIdleEvents
 
         var spot = boss.Monster.Position;
         var name = boss.Definition.Name;
-        if (player.CurrentMap?.Definition.Number == boss.Definition.MapNumber)
+        if (player.CurrentMap is { } here
+            && here.Definition.Number == boss.Definition.MapNumber
+            && MUIdleHuntMaps.IsWalkable(here, player.Position, spot))
         {
             if (player.Position.EuclideanDistanceTo(spot) > 15)
             {
@@ -263,7 +265,10 @@ internal static class MUIdleEvents
             return;
         }
 
-        if (MUIdleHuntMaps.Evaluate(player, boss.Definition.MapNumber) is not { Warp: { } warp } target)
+        // Through the warp whose landing walks to the boss: another floor of the same map is no way there.
+        if (MUIdleHuntMaps.Evaluate(player, boss.Definition.MapNumber) is not { Refusal: null } target
+            || await player.GameContext.GetMapAsync((ushort)boss.Definition.MapNumber).ConfigureAwait(false) is not { } bossMap
+            || MUIdleHuntMaps.ReachingWarp(player, bossMap, spot) is not { } warp)
         {
             return;
         }

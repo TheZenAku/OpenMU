@@ -63,6 +63,15 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                 case MUIdlePackets.HuntModeSubCode:
                     await this.SetHuntModeAsync(remotePlayer, character, payload).ConfigureAwait(false);
                     break;
+                case MUIdlePackets.ResetSubCode:
+                    // Upstream's reset: level, zen, items, the (season) limit, logging out after it.
+                    await new GameLogic.Resets.ResetCharacterAction(remotePlayer).ResetCharacterAsync().ConfigureAwait(false);
+                    if (remotePlayer.PlayerState.CurrentState == PlayerState.EnteredWorld)
+                    {
+                        await MUIdleSessions.SendStateAsync(remotePlayer, await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false)).ConfigureAwait(false);
+                    }
+
+                    break;
             }
         }
         catch (JsonException)

@@ -39,6 +39,9 @@ internal static class MUIdlePackets
     /// <summary>Client to server: the player switched between HUNT and MANUAL (<c>{"hunt":true}</c>).</summary>
     public const byte HuntModeSubCode = 0x13;
 
+    /// <summary>Client to server: reset the character (the reset feature's own action and checks).</summary>
+    public const byte ResetSubCode = 0x14;
+
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;
 

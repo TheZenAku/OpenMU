@@ -64,6 +64,7 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
 
             state.NextRunUtc = now + TimeSpan.FromSeconds(15);
             await this.MaintainHuntersAsync(gameContext, configuration, state, now).ConfigureAwait(false);
+            MUIdleSeason.Apply(gameContext, configuration);
             await MUIdleEvents.EnrolAsync(gameContext).ConfigureAwait(false);
             await MUIdleEvents.RallyAsync(gameContext).ConfigureAwait(false);
         }

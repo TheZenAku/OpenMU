@@ -75,4 +75,20 @@ public class MUIdleConfiguration
     /// </summary>
     [Display(Name = "Online save interval", Description = "How often the progress of online players is saved, so a crash loses little; 0 = only on leaving.")]
     public TimeSpan OnlineSaveInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Gets or sets the number of the season (shown to the players).
+    /// </summary>
+    public int SeasonNumber { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets when the season started (UTC); the reset cap rises every seven days from here.
+    /// </summary>
+    public DateTime SeasonStartUtc { get; set; } = new(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Gets or sets how many resets each season week allows (week 1: this many, week 2: twice, ...);
+    /// 0 leaves the reset feature's own limit alone.
+    /// </summary>
+    public int SeasonResetsPerWeek { get; set; } = 5;
 }

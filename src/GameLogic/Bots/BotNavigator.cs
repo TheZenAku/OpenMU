@@ -1648,7 +1648,11 @@ internal sealed class BotNavigator : AsyncDisposable
         var mapIsIllegal = currentMap is not null
                            && !this.TryGetLegalWarp(currentMap, out _)
                            && currentMap.Number != this._player.SelectedCharacter?.CharacterClass?.HomeMap?.Number;
-        var mustEscape = mapIsHostile || mapIsIllegal;
+
+        // A map whose requirement the character no longer meets (flying gear broken on Icarus) is left
+        // like an illegal one, instead of being stuck there.
+        var requirementLost = currentMap is not null && currentMap.TryGetRequirementError(this._player, out _);
+        var mustEscape = mapIsHostile || mapIsIllegal || requirementLost;
 
         // A map can pass every check above and still pay the bot nothing: the safe monsters are a rare
         // kind among ones it must refuse, or stronger bots empty the grounds before it arrives. The bot

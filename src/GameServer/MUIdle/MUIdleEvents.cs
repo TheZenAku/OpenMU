@@ -106,6 +106,9 @@ internal static class MUIdleEvents
         var special = character.IsSpecialCharacter();
         var definition = player.GameContext.Configuration.MiniGameDefinitions
             .Where(d => d.Type == type)
+            // A master-only level that spans every level (Devil Square 7) must not hide that the
+            // character is simply below the normal levels: those come first.
+            .OrderBy(d => d.RequiresMasterClass)
             .FirstOrDefault(d => special
                 ? level >= d.MinimumSpecialCharacterLevel && level <= d.MaximumSpecialCharacterLevel
                 : level >= d.MinimumCharacterLevel && level <= d.MaximumCharacterLevel);
@@ -116,7 +119,11 @@ internal static class MUIdleEvents
 
         if (definition.RequiresMasterClass && !characterClass.IsMasterClass)
         {
-            return (definition, EventRefusal.Master);
+            // Below the first normal level, "level" is the honest reason, not "master class".
+            var belowNormal = player.GameContext.Configuration.MiniGameDefinitions
+                .Where(d => d.Type == type && !d.RequiresMasterClass)
+                .Any(d => level < (special ? d.MinimumSpecialCharacterLevel : d.MinimumCharacterLevel));
+            return (definition, belowNormal ? EventRefusal.Level : EventRefusal.Master);
         }
 
         if (definition.TicketItem is { } ticket

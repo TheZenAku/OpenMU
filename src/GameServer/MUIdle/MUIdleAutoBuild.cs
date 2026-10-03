@@ -25,7 +25,28 @@ internal static class MUIdleAutoBuild
     private static readonly IncreaseStatsAction IncreaseAction = new();
 
     /// <summary>
-    /// Gets the stat weights of a character class (first = main stat, which also takes the remainder).
+    /// The build presets a class can choose instead of its default (see <see cref="MUIdleSettings.BuildPreset"/>).
+    /// </summary>
+    public static readonly string[] Presets = ["support", "energy", "raven"];
+
+    /// <summary>
+    /// Gets the stat weights of a character class and build preset (first = main stat, which also takes
+    /// the remainder): Elf "support" (energy), Magic Gladiator "energy", Dark Lord "raven" (command);
+    /// any other preset is the class default.
+    /// </summary>
+    /// <param name="classNumber">The character class number (any evolution of the line).</param>
+    /// <param name="preset">The build preset, or <c>null</c> for the default.</param>
+    /// <returns>The weights.</returns>
+    public static (AttributeDefinition Stat, int Weight)[] GetWeights(byte classNumber, string? preset) => (classNumber, preset) switch
+    {
+        (>= 8 and <= 11, "support") => [(Stats.BaseEnergy, 5), (Stats.BaseAgility, 2), (Stats.BaseVitality, 2)],
+        (>= 12 and <= 15, "energy") => [(Stats.BaseEnergy, 5), (Stats.BaseStrength, 2), (Stats.BaseAgility, 2)],
+        (>= 16 and <= 19, "raven") => [(Stats.BaseLeadership, 5), (Stats.BaseStrength, 2), (Stats.BaseEnergy, 2), (Stats.BaseAgility, 1)],
+        _ => GetWeights(classNumber),
+    };
+
+    /// <summary>
+    /// Gets the default stat weights of a character class (first = main stat, which also takes the remainder).
     /// </summary>
     /// <param name="classNumber">The character class number (any evolution of the line).</param>
     /// <returns>The weights.</returns>
@@ -45,14 +66,15 @@ internal static class MUIdleAutoBuild
     /// be mutated (its packet handling, or the offline AI tick).
     /// </summary>
     /// <param name="player">The player.</param>
-    public static async ValueTask DistributeAsync(Player player)
+    /// <param name="preset">The build preset; the player's last known settings when <c>null</c>.</param>
+    public static async ValueTask DistributeAsync(Player player, string? preset = null)
     {
         if (player.SelectedCharacter is not { LevelUpPoints: > 0 } character || character.CharacterClass is not { } characterClass)
         {
             return;
         }
 
-        var weights = GetWeights(characterClass.Number);
+        var weights = GetWeights(characterClass.Number, preset ?? MUIdleHuntTracker.GetSettings(player)?.BuildPreset);
         var points = character.LevelUpPoints;
         var totalWeight = weights.Sum(w => w.Weight);
         var shares = weights.Select(w => (w.Stat, Amount: points * w.Weight / totalWeight)).ToArray();

@@ -90,6 +90,12 @@ public sealed class MUIdleSettings
     public bool BossesFirst { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets the auto build preset (Elf "support", Magic Gladiator "energy", Dark Lord "raven");
+    /// <c>null</c> for the class default (<see cref="MUIdleAutoBuild.GetWeights(byte, string?)"/>).
+    /// </summary>
+    public string? BuildPreset { get; set; }
+
+    /// <summary>
     /// Parses the settings from JSON; returns the defaults for null or invalid JSON.
     /// </summary>
     /// <param name="json">The JSON.</param>

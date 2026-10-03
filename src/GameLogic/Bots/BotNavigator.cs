@@ -275,6 +275,8 @@ internal sealed class BotNavigator : AsyncDisposable
     private bool _hasDestination;
     private DateTimeOffset _lastWarpUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _nextFollowWarpSearchUtc = DateTimeOffset.MinValue;
+
+    private DateTimeOffset _nextRallyReachCheckUtc = DateTimeOffset.MinValue;
     private Point _lastPosition;
     private DateTime _lastMoveUtc = DateTime.MinValue;
     private DateTime _nextEquipCheckUtc = DateTime.MinValue;
@@ -815,6 +817,22 @@ internal sealed class BotNavigator : AsyncDisposable
             this._player.HuntingOrigin = rally.Spot;
             if (this._player.Position.EuclideanDistanceTo(rally.Spot) > RallyRange)
             {
+                // Several floors share one map id (Dungeon, Lost Tower, ...): from another floor no walk
+                // reaches the spot, so the bot takes the warp entry whose landing does - the fare paid.
+                if (this._timeProvider.GetUtcNow() >= this._nextRallyReachCheckUtc)
+                {
+                    this._nextRallyReachCheckUtc = this._timeProvider.GetUtcNow() + FollowWarpSearchCooldown;
+                    if (this.WalkingDistance(map, this._player.Position, rally.Spot, cancellationToken) is null
+                        && this._timeProvider.GetUtcNow() - this._lastWarpUtc >= FollowWarpCooldown
+                        && this.FindBestReachableLegalWarp(map, rally.Spot, cancellationToken) is { Gate: { } floorGate } floorWarp
+                        && this.CanAffordWarp(floorWarp))
+                    {
+                        this._player.Logger.LogDebug("Bot {Character} takes warp {Warp} to the floor of the rally point.", this._player.Name, floorWarp.Name);
+                        await this.WarpAsync(floorWarp, floorGate, map.Definition, this.BestSafeLevel(map.Definition), this.GetBotLevel()).ConfigureAwait(false);
+                        return;
+                    }
+                }
+
                 this._destination = rally.Spot;
                 this._hasDestination = true;
                 this.Report(BotActivity.Travelling, map.Definition.Name.ValueInNeutralLanguage);
@@ -1529,7 +1547,8 @@ internal sealed class BotNavigator : AsyncDisposable
             }
             else if (this._timeProvider.GetUtcNow() - this._lastWarpUtc >= WarpCooldown
                      && !rallyMap.TryGetRequirementError(this._player, out _)
-                     && this.TryGetLegalWarp(rallyMap, out var rallyWarp)
+                     && await this._player.GameContext.GetMapAsync((ushort)rally.Map).ConfigureAwait(false) is { } rallyGameMap
+                     && this.FindBestReachableLegalWarp(rallyGameMap, rally.Spot, this._cts.Token) is { } rallyWarp
                      && this.CanAffordWarp(rallyWarp)
                      && rallyWarp.Gate is { } rallyGate)
             {
@@ -2063,6 +2082,38 @@ internal sealed class BotNavigator : AsyncDisposable
         {
             ArrayPool<int>.Shared.Return(distancesFromTarget);
             ArrayPool<int>.Shared.Return(pendingCoordinates);
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of steps a walk from one point to another takes on the map; <c>null</c> when no
+    /// walk connects them (e.g. two floors which share one map id).
+    /// </summary>
+    /// <param name="map">The map.</param>
+    /// <param name="from">The start.</param>
+    /// <param name="to">The destination.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The steps, or <c>null</c>.</returns>
+    private int? WalkingDistance(GameMap map, Point from, Point to, CancellationToken cancellationToken)
+    {
+        var walkMap = map.Terrain.WalkMap;
+        var width = walkMap.GetLength(0);
+        var coordinateCount = width * walkMap.GetLength(1);
+        var distances = ArrayPool<int>.Shared.Rent(coordinateCount);
+        var pending = ArrayPool<int>.Shared.Rent(coordinateCount);
+        try
+        {
+            Array.Clear(distances, 0, coordinateCount);
+            this.PopulateWalkableDistancesFrom(walkMap, to, distances, pending, cancellationToken);
+
+            // Zero means unreachable, so stored distances are offset by one.
+            var encoded = distances[(from.Y * width) + from.X];
+            return encoded == 0 ? null : encoded - 1;
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(distances);
+            ArrayPool<int>.Shared.Return(pending);
         }
     }
 

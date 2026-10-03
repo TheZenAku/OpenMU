@@ -106,6 +106,13 @@ public sealed record BotNavigatorPolicy
     public Func<(int Map, Point Spot)?>? Rally { get; init; }
 
     /// <summary>
+    /// Gets a band of monster levels the bot prefers to hunt while it is given (e.g. a quest item drops
+    /// only from monsters of that band): a ground of such safe monsters on its map, else a map that has
+    /// them. <c>null</c> when there is none.
+    /// </summary>
+    public Func<(int Min, int Max)?>? PreferredMonsterLevels { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

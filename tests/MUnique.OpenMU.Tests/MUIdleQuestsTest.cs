@@ -51,6 +51,30 @@ public class MUIdleQuestsTest
         Assert.That(MUIdleQuests.Current(new[] { scroll, treasures }, this._knight, null, treasures), Is.SameAs(treasures));
     }
 
+    /// <summary>
+    /// The band of the first missing quest item; none once the bag holds it.
+    /// </summary>
+    [Test]
+    public void PrefersTheBandOfTheMissingItem()
+    {
+        var scroll = new BasicModel.ItemDefinition { Id = Guid.NewGuid(), Name = "Scroll of Emperor" };
+        var quest = (BasicModel.QuestDefinition)Quest(0, this._knight);
+        quest.RequiredItems.Add(new BasicModel.QuestItemRequirement
+        {
+            Item = scroll,
+            MinimumNumber = 1,
+            DropItemGroup = new BasicModel.DropItemGroup { MinimumMonsterLevel = 45, MaximumMonsterLevel = 60 },
+        });
+        var found = new BasicModel.Item { Definition = scroll };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(MUIdleQuests.MissingItemBand(quest, []), Is.EqualTo((45, 60)));
+            Assert.That(MUIdleQuests.MissingItemBand(quest, [found]), Is.Null);
+            Assert.That(MUIdleQuests.MissingItemBand(null, []), Is.Null);
+        });
+    }
+
     private static QuestDefinition Quest(short number, CharacterClass characterClass)
         => new BasicModel.QuestDefinition { Id = Guid.NewGuid(), Group = 0, Number = number, QualifiedCharacter = characterClass };
 }

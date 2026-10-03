@@ -116,15 +116,38 @@ internal static class MUIdleOnlineAutoMap
             return;
         }
 
-        // A mastered character earns only above the master experience floor: maps judged by what pays first.
-        var floor = HuntingMapRating.MasterExperienceFloor(player);
         var options = MUIdleHuntMaps.Options(player)
             .Where(o => o is { Refusal: null, Warp: not null } && o.Map.Number != current.Number)
             .ToList();
-        HuntMapOption? Pick(int minimum) => Choose(
-            HuntingMapRating.BestSafeLevel(player, current, minimum),
-            options.Select(o => (o, HuntingMapRating.BestSafeLevel(player, o.Map, minimum))));
-        if (((floor > 0 ? Pick(floor) : null) ?? Pick(0)) is not { Warp: { } warp } target)
+
+        // The missing item of the class quest drops only from monsters of a band: a map that has them.
+        var band = settings.QuestItemsFirst ? MUIdleQuests.MissingItemBand(player) : null;
+        HuntMapOption? target;
+        if (band is { } wanted)
+        {
+            if (HuntingMapRating.BestSafeLevelInBand(player, current, wanted.Min, wanted.Max) > 0)
+            {
+                return;
+            }
+
+            target = options
+                .Select(o => (Option: o, Level: HuntingMapRating.BestSafeLevelInBand(player, o.Map, wanted.Min, wanted.Max)))
+                .Where(x => x.Level > 0)
+                .OrderByDescending(x => x.Level)
+                .Select(x => x.Option)
+                .FirstOrDefault();
+        }
+        else
+        {
+            // A mastered character earns only above the master experience floor: maps judged by what pays first.
+            var floor = HuntingMapRating.MasterExperienceFloor(player);
+            HuntMapOption? Pick(int minimum) => Choose(
+                HuntingMapRating.BestSafeLevel(player, current, minimum),
+                options.Select(o => (o, HuntingMapRating.BestSafeLevel(player, o.Map, minimum))));
+            target = (floor > 0 ? Pick(floor) : null) ?? Pick(0);
+        }
+
+        if (target is not { Warp: { } warp })
         {
             return;
         }
@@ -140,7 +163,10 @@ internal static class MUIdleOnlineAutoMap
 
         // As with a pinned map: the map change completes when the client loaded the map, then
         // MUIdleSessions.OnMapEnteredAsync sends the client to a hunting ground and resumes HUNT.
-        MUIdleHuntTracker.ExpectPinnedArrival(player, target.Map.Number);
+        var ground = band is not null && await player.GameContext.GetMapAsync((ushort)target.Map.Number).ConfigureAwait(false) is { } targetMap
+            ? MUIdleHuntMaps.PickGround(player, targetMap, band)
+            : null;
+        MUIdleHuntTracker.ExpectPinnedArrival(player, target.Map.Number, ground);
         await Warp.WarpToAsync(player, warp).ConfigureAwait(false);
     }
 }

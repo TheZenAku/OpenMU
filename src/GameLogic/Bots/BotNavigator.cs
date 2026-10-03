@@ -1580,6 +1580,26 @@ internal sealed class BotNavigator : AsyncDisposable
             }
         }
 
+        // A preferred band of monster levels (a quest item drops only there): stay on a map that has such
+        // safe monsters, else go to the legal map with the strongest of them.
+        if (this._policy.PinnedMap is null && this._policy.PreferredMonsterLevels?.Invoke() is { } wanted)
+        {
+            if (currentMap is not null && HuntingMapRating.BestSafeLevelInBand(this._player, currentMap, wanted.Min, wanted.Max) > 0)
+            {
+                if (!mustEscape)
+                {
+                    return false;
+                }
+            }
+            else if (this._timeProvider.GetUtcNow() - this._lastWarpUtc >= WarpCooldown
+                     && this.TryPickBandMap(wanted.Min, wanted.Max, out var bandWarp, out var bandMap, out var bandLevel)
+                     && bandWarp.Gate is { } bandGate)
+            {
+                this._player.Logger.LogDebug("Bot {Character} goes to map {Map}: monsters of level {Min}-{Max} are wanted.", this._player.Name, bandMap.Name, wanted.Min, wanted.Max);
+                return await this.WarpAsync(bandWarp, bandGate, bandMap, bandLevel, botLevel).ConfigureAwait(false);
+            }
+        }
+
         // A map that has earned clearly more than this one, by the policy's measure: back there.
         if (this._policy.PinnedMap is null
             && this._timeProvider.GetUtcNow() - this._lastWarpUtc >= WarpCooldown
@@ -2331,6 +2351,41 @@ internal sealed class BotNavigator : AsyncDisposable
     private bool IsPermanentMonsterSpawn(MonsterSpawnArea area) => HuntingMapRating.IsPermanentMonsterSpawn(area);
 
     /// <summary>
+    /// Picks the legally warpable map (other than the current one) with the strongest safe monsters of
+    /// a level band, with its warp.
+    /// </summary>
+    private bool TryPickBandMap(int minimumLevel, int maximumLevel, out WarpInfo warp, out GameMapDefinition mapDefinition, out int monsterLevel)
+    {
+        warp = default!;
+        mapDefinition = default!;
+        monsterLevel = 0;
+        var current = this._player.CurrentMap?.Definition;
+        foreach (var candidate in this._player.GameContext.Configuration.Maps)
+        {
+            if (ReferenceEquals(candidate, current))
+            {
+                continue;
+            }
+
+            var best = HuntingMapRating.BestSafeLevelInBand(this._player, candidate, minimumLevel, maximumLevel);
+            if (best <= monsterLevel
+                || candidate.TryGetRequirementError(this._player, out _)
+                || !this.TryGetLegalWarp(candidate, out var candidateWarp)
+                || !this.CanAffordWarp(candidateWarp)
+                || !HasWalkableSpawnGate(candidate))
+            {
+                continue;
+            }
+
+            warp = candidateWarp;
+            mapDefinition = candidate;
+            monsterLevel = best;
+        }
+
+        return mapDefinition is not null;
+    }
+
+    /// <summary>
     /// Picks the legally warpable map with the strongest monsters the bot can safely fight among those
     /// EASIER than where it stands now - one step down, not a retreat to the starter map. Used when the
     /// current map pays nothing (see <see cref="BarrenMapDuration"/>): the bot keeps stepping down every
@@ -2492,8 +2547,17 @@ internal sealed class BotNavigator : AsyncDisposable
         var floor = this.MasterExperienceFloor();
         var masterGrounds = floor > 0 ? safe.Where(x => x.Level >= floor).ToList() : [];
 
+        // A preferred band (a quest item drops only there): its safe grounds come first.
+        var wanted = this._policy.PreferredMonsterLevels?.Invoke();
+        var preferred = wanted is { } w ? safe.Where(x => x.Level >= w.Min && x.Level <= w.Max).ToList() : [];
+
         List<(MonsterSpawnArea Area, int Level)> band;
-        if (masterGrounds.Count > 0)
+        if (preferred.Count > 0)
+        {
+            var strongest = preferred.Max(x => x.Level);
+            band = preferred.Where(x => x.Level >= strongest - BandWidth).ToList();
+        }
+        else if (masterGrounds.Count > 0)
         {
             var cheapest = masterGrounds.Min(x => x.Level);
             band = masterGrounds.Where(x => x.Level <= cheapest + BandWidth).ToList();

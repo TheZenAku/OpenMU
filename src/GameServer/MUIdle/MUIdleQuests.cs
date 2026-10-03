@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.GameServer.MUIdle;
 
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Configuration.Quests;
+using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 
 /// <summary>
@@ -39,6 +40,49 @@ internal static class MUIdleQuests
             .OrderBy(q => q.Number)
             .FirstOrDefault();
     }
+
+    /// <summary>
+    /// Gets the monster level band of the first quest item the active quest still misses (it drops only
+    /// from monsters of that band while the quest runs); <c>null</c> when nothing like that is missing.
+    /// </summary>
+    /// <param name="active">The active quest.</param>
+    /// <param name="bag">The items of the inventory.</param>
+    /// <returns>The band, or <c>null</c>.</returns>
+    internal static (int Min, int Max)? MissingItemBand(QuestDefinition? active, IEnumerable<Item> bag)
+    {
+        if (active is null)
+        {
+            return null;
+        }
+
+        var items = bag.ToList();
+        foreach (var required in active.RequiredItems)
+        {
+            if (required.DropItemGroup is not { MinimumMonsterLevel: { } min } group)
+            {
+                continue;
+            }
+
+            var level = group.ItemLevel;
+            var have = items.Count(i => Equals(i.Definition, required.Item) && (level is null || level == i.Level));
+            if (have < required.MinimumNumber)
+            {
+                return (min, group.MaximumMonsterLevel ?? byte.MaxValue);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the monster level band the hunt of the player prefers for its class quest; <c>null</c> for none.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The band, or <c>null</c>.</returns>
+    public static (int Min, int Max)? MissingItemBand(Player player)
+        => player.SelectedCharacter?.QuestStates.FirstOrDefault(s => s.Group == ClassLine)?.ActiveQuest is { } active
+            ? MissingItemBand(active, player.Inventory?.Items ?? [])
+            : null;
 
     /// <summary>
     /// The state of the class quest line for the client.

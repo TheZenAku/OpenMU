@@ -182,7 +182,17 @@ internal static class MUIdleHuntMaps
     /// <param name="player">The player.</param>
     /// <param name="map">The map, with its terrain.</param>
     /// <returns>The point, or <c>null</c> when the map has no permanent monsters or no walkable tile there.</returns>
-    public static Point? PickGround(Player player, GameMap map)
+    public static Point? PickGround(Player player, GameMap map) => PickGround(player, map, null);
+
+    /// <summary>
+    /// Picks where on a map to hunt, preferring safe monsters of a level band when given (see
+    /// <see cref="PickGround(Player, GameMap)"/>).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="map">The map, with its terrain.</param>
+    /// <param name="band">The preferred monster levels, or <c>null</c>.</param>
+    /// <returns>The point, or <c>null</c>.</returns>
+    public static Point? PickGround(Player player, GameMap map, (int Min, int Max)? band)
     {
         var areas = map.Definition.MonsterSpawns
             .Where(a => a is { Quantity: > 0, SpawnTrigger: SpawnTrigger.Automatic, MonsterDefinition.ObjectKind: NpcObjectKind.Monster })
@@ -195,7 +205,8 @@ internal static class MUIdleHuntMaps
         }
 
         var safe = areas.Where(x => CombatHandler.IsSafeTarget(player, x.Area.MonsterDefinition!)).ToList();
-        var pick = safe.Count > 0 ? safe.MaxBy(x => x.Level) : areas.MinBy(x => x.Level);
+        var wanted = band is { } b ? safe.Where(x => x.Level >= b.Min && x.Level <= b.Max).ToList() : [];
+        var pick = wanted.Count > 0 ? wanted.MaxBy(x => x.Level) : safe.Count > 0 ? safe.MaxBy(x => x.Level) : areas.MinBy(x => x.Level);
         var area = pick.Area;
         int centerX = (area.X1 + area.X2) / 2, centerY = (area.Y1 + area.Y2) / 2;
         var terrain = map.Terrain;

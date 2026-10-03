@@ -184,6 +184,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         ActivityChanged = (activity, map) => MUIdleHuntTracker.Report(this, MUIdleHuntTracker.FromBot(activity), map),
         BetterProvenMap = this.Settings.AutoMapSelection ? this.Statistics.BetterProvenMap : null,
         Rally = this.Settings.BossesFirst ? this.WorldBossRally : null,
+        PreferredMonsterLevels = this.Settings is { AutoMapSelection: true, QuestItemsFirst: true } ? () => MUIdleQuests.MissingItemBand(this) : null,
         SellJunk = this.Settings.AutoSell,
         BuyPotions = this.Settings.AutoBuyPotions,
         RepairAtMerchant = this.Settings.AutoRepair,

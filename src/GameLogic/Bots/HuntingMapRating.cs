@@ -49,6 +49,35 @@ public static class HuntingMapRating
     }
 
     /// <summary>
+    /// Gets the level of the strongest permanent monster of the band on the map which the player can
+    /// safely fight; 0 if the map has none.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="map">The map to judge.</param>
+    /// <param name="minimumLevel">The lowest monster level of the band.</param>
+    /// <param name="maximumLevel">The highest monster level of the band.</param>
+    /// <returns>The level of the strongest safe monster of the band.</returns>
+    public static int BestSafeLevelInBand(Player player, GameMapDefinition map, int minimumLevel, int maximumLevel)
+    {
+        var best = 0;
+        foreach (var area in map.MonsterSpawns)
+        {
+            if (!IsPermanentMonsterSpawn(area))
+            {
+                continue;
+            }
+
+            var level = GetMonsterLevel(area.MonsterDefinition!);
+            if (level >= minimumLevel && level <= maximumLevel && level > best && CombatHandler.IsSafeTarget(player, area.MonsterDefinition!))
+            {
+                best = level;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
     /// Whether the spawn area holds monsters which stand on the map at all times. Event spawns (golden
     /// monsters, invasion and wave areas) are configured on the regular maps too, but only exist while
     /// their event runs.

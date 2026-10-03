@@ -90,6 +90,12 @@ public sealed class MUIdleSettings
     public bool BossesFirst { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether HUNT on AUTO prefers monsters which drop the missing item of
+    /// the active class quest (<see cref="MUIdleQuests.MissingItemBand(Player)"/>).
+    /// </summary>
+    public bool QuestItemsFirst { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the auto build preset (Elf "support", Magic Gladiator "energy", Dark Lord "raven");
     /// <c>null</c> for the class default (<see cref="MUIdleAutoBuild.GetWeights(byte, string?)"/>).
     /// </summary>

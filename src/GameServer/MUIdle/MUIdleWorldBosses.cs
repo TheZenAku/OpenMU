@@ -99,6 +99,9 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
 {
     private const string LogCategory = "MUnique.OpenMU.GameServer.MUIdle.WorldBoss";
 
+    /// <summary>How far, walking from the warp's landing, a boss may appear.</summary>
+    private const int MaxWalkSteps = 90;
+
     private static readonly ConcurrentDictionary<Monster, BossFight> Fights = new();
 
     private static readonly ConcurrentDictionary<string, DateTime> Spawned = new();
@@ -336,10 +339,11 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
     }
 
     /// <summary>
-    /// The configured point; else a tile a player can walk to from where the map's warp lands - the
-    /// one of the monster's own spawn area nearest its middle, or the reachable tile nearest that area.
-    /// (A spot behind walls or on an upper floor joined only by inner gates, like Lost Tower's, was
-    /// never reached: three of the first four bosses left unhurt.)
+    /// The configured point; else a tile a player can walk to, and soon, from where the map's warp
+    /// lands (at most <see cref="MaxWalkSteps"/> steps): the one of the monster's own spawn area nearest
+    /// its middle, or the tile in walking range nearest that area. (Behind walls or on a floor joined
+    /// only by inner gates nobody reached it; across Atlans, 200 tiles of trash away, a rallied hunter
+    /// walked for half an hour without getting there.)
     /// </summary>
     private static Point? SpawnPoint(GameMap gameMap, WorldBossDefinition boss, MonsterDefinition definition, IGameContext gameContext)
     {
@@ -349,8 +353,8 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         }
 
         var terrain = gameMap.Terrain;
-        var reachable = ReachableFromWarp(gameMap, gameContext);
-        if (reachable is null)
+        var steps = WalkStepsFromWarp(gameMap, gameContext);
+        if (steps is null)
         {
             return terrain.RandomWalkableCoordinate;
         }
@@ -365,7 +369,7 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         {
             for (var y = 0; y < 256; y++)
             {
-                if (!reachable[x, y] || terrain.SafezoneMap[x, y])
+                if (steps[x, y] < 0 || steps[x, y] > MaxWalkSteps || terrain.SafezoneMap[x, y])
                 {
                     continue;
                 }
@@ -383,8 +387,11 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         return best ?? terrain.RandomWalkableCoordinate;
     }
 
-    /// <summary>The walkable tiles connected, on foot, to the landing area of a warp to the map (null without one).</summary>
-    private static bool[,]? ReachableFromWarp(GameMap gameMap, IGameContext gameContext)
+    /// <summary>
+    /// The walking steps from the landing area of a warp to the map to every tile (-1: not reachable
+    /// on foot), or null without a warp.
+    /// </summary>
+    private static int[,]? WalkStepsFromWarp(GameMap gameMap, IGameContext gameContext)
     {
         var gate = gameContext.Configuration.WarpList
             .Where(w => w.Gate?.Map?.Number == gameMap.Definition.Number)
@@ -397,15 +404,23 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         }
 
         var walk = gameMap.Terrain.WalkMap;
-        var seen = new bool[256, 256];
+        var steps = new int[256, 256];
+        for (var x = 0; x < 256; x++)
+        {
+            for (var y = 0; y < 256; y++)
+            {
+                steps[x, y] = -1;
+            }
+        }
+
         var queue = new Queue<(int X, int Y)>();
         for (var x = (int)gate.X1; x <= gate.X2; x++)
         {
             for (var y = (int)gate.Y1; y <= gate.Y2; y++)
             {
-                if (walk[x, y] && !seen[x, y])
+                if (walk[x, y] && steps[x, y] < 0)
                 {
-                    seen[x, y] = true;
+                    steps[x, y] = 0;
                     queue.Enqueue((x, y));
                 }
             }
@@ -416,15 +431,15 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
             var (x, y) = queue.Dequeue();
             foreach (var (nx, ny) in new[] { (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1) })
             {
-                if (nx is >= 0 and < 256 && ny is >= 0 and < 256 && walk[nx, ny] && !seen[nx, ny])
+                if (nx is >= 0 and < 256 && ny is >= 0 and < 256 && walk[nx, ny] && steps[nx, ny] < 0)
                 {
-                    seen[nx, ny] = true;
+                    steps[nx, ny] = steps[x, y] + 1;
                     queue.Enqueue((nx, ny));
                 }
             }
         }
 
-        return seen;
+        return steps;
     }
 
     private static ValueTask AnnounceAsync(IGameContext gameContext, string english, string portuguese)

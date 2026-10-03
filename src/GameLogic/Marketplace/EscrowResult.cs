@@ -24,6 +24,9 @@ public enum EscrowStatus : byte
     MoneyCap = 10,
     Failed = 11,
     NotSold = 12,
+
+    /// <summary>A <see cref="IMarketplaceListingPlugIn"/> kept the item in the bag (e.g. the player locked it).</summary>
+    Refused = 13,
 }
 
 /// <summary>

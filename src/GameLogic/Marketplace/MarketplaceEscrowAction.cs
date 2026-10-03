@@ -5,6 +5,7 @@
 namespace MUnique.OpenMU.GameLogic.Marketplace;
 
 using System.Collections;
+using System.ComponentModel;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -245,6 +246,16 @@ public class MarketplaceEscrowAction
         if (item.Definition is null || item.Definition.IsBoundToCharacter)
         {
             return new EscrowResult(token.Operation, EscrowStatus.NotTradable, token.ListingId, token.BoxId, null, 0);
+        }
+
+        if (player.GameContext.PlugInManager.GetPlugInPoint<IMarketplaceListingPlugIn>() is { } listingPlugIns)
+        {
+            var eventArgs = new CancelEventArgs();
+            await listingPlugIns.ListingAsync(player, item, eventArgs).ConfigureAwait(false);
+            if (eventArgs.Cancel)
+            {
+                return new EscrowResult(token.Operation, EscrowStatus.Refused, token.ListingId, token.BoxId, null, 0);
+            }
         }
 
         if (token.Fee < 0 || token.Fee > MaximumMoney || player.Money < token.Fee)

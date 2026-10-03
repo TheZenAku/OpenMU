@@ -80,9 +80,13 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
     /// </summary>
     /// <returns>The boss map and position.</returns>
     internal (int Map, Point Spot)? WorldBossRally()
-        => MUIdleWorldBossPlugIn.LiveBossFor(this.GameContext, this.Level) is { } boss
-            ? (boss.Definition.MapNumber, boss.Monster.Position)
-            : null;
+    {
+        var boss = MUIdleWorldBossPlugIn.LiveBossFor(this.GameContext, this.Level);
+
+        // The combat handler hits the boss first and does not shy away from its long fight.
+        this.PriorityTarget = boss?.Monster;
+        return boss is { } b ? (b.Definition.MapNumber, b.Monster.Position) : null;
+    }
 
     /// <summary>
     /// Gets the name of the current map, as the statistics record it.

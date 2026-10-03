@@ -99,6 +99,12 @@ public class OfflinePlayer : Player
     public Point HuntingOrigin { get; set; }
 
     /// <summary>
+    /// Gets or sets a target the session was sent for (e.g. a world boss): attacked first whenever it
+    /// is in range, even when killing it takes long - the level and the damage it deals still decide.
+    /// </summary>
+    public IAttackable? PriorityTarget { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether the player should keep playing after dying and respawning.
     /// A normal offline session ends on death; bots override this to keep running forever.
     /// </summary>

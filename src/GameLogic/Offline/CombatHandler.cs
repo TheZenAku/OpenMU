@@ -208,6 +208,18 @@ public sealed class CombatHandler
     /// <param name="player">The bot player.</param>
     /// <param name="monster">The monster definition.</param>
     public static bool IsSafeTarget(Player player, MonsterDefinition monster)
+        => IsSafeTarget(player, monster, requireQuickKill: true);
+
+    /// <summary>
+    /// Whether the player can fight the monster: its level and damage, the player's attack against its
+    /// defense, and - unless <paramref name="requireQuickKill"/> is false (a world boss is slow on
+    /// purpose) - that it dies within the player's hit budget.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="monster">The monster.</param>
+    /// <param name="requireQuickKill">Whether the monster must die within the hit budget.</param>
+    /// <returns><c>true</c> when it is safe to fight.</returns>
+    public static bool IsSafeTarget(Player player, MonsterDefinition monster, bool requireQuickKill)
     {
         var (monsterLevel, averageDamage, monsterDefense, monsterHealth, monsterAttackRate) = GetMonsterCombatStats(monster);
         if (monsterLevel <= 0 || player.Attributes is not { } attributes)
@@ -236,7 +248,7 @@ public sealed class CombatHandler
             return false;
         }
 
-        return (attackPower - monsterDefense) * GetHitBudget(player, monsterLevel) >= monsterHealth;
+        return !requireQuickKill || (attackPower - monsterDefense) * GetHitBudget(player, monsterLevel) >= monsterHealth;
     }
 
     /// <summary>
@@ -507,6 +519,15 @@ public sealed class CombatHandler
             return;
         }
 
+        // A target the session was sent for (a world boss) comes first whenever it is in range.
+        if (this._player.PriorityTarget is Monster priority
+            && this.IsTargetStillValid(priority)
+            && this.IsWithinSafeHuntLevel(priority))
+        {
+            this._currentTarget = priority;
+            return;
+        }
+
         if (this._currentTarget is { } t && !this.IsTargetStillValid(t))
         {
             this._currentTarget = null;
@@ -635,7 +656,8 @@ public sealed class CombatHandler
             return true;
         }
 
-        return IsSafeTarget(this._player, monster.Definition);
+        // The target it was sent for may take long to kill; that alone does not make it unsafe.
+        return IsSafeTarget(this._player, monster.Definition, requireQuickKill: !ReferenceEquals(monster, this._player.PriorityTarget));
     }
 
     private async ValueTask ExecutePhysicalAttackAsync(IAttackable target)

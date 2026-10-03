@@ -140,7 +140,7 @@ internal static class MUIdleQuests
             : done ? "handIn"
             : active ? "collecting"
             : player.Level < quest.MinimumCharacterLevel ? "level"
-            : player.Money < quest.RequiredStartMoney ? "zen"
+            : player.Money < AcceptCost(player, quest, stand.Map) ? "zen"
             : "accept";
         return new
         {
@@ -198,7 +198,7 @@ internal static class MUIdleQuests
             });
         }
 
-        if (player.Level < quest.MinimumCharacterLevel || player.Money < quest.RequiredStartMoney)
+        if (player.Level < quest.MinimumCharacterLevel || player.Money < AcceptCost(player, quest, map))
         {
             return null;
         }
@@ -209,6 +209,18 @@ internal static class MUIdleQuests
             var running = hunter.SelectedCharacter?.QuestStates.FirstOrDefault(s => s.Group == ClassLine)?.ActiveQuest;
             Log(hunter, Equals(running, quest) ? $"accepted (paid {quest.RequiredStartMoney:N0} zen)" : "could not accept", name, giver);
         });
+    }
+
+    /// <summary>
+    /// The zen accepting the quest takes from here: the start fee plus the fare to the giver's map - a
+    /// character with exactly the fee would arrive short of it after the warp.
+    /// </summary>
+    private static long AcceptCost(Player player, QuestDefinition quest, GameMapDefinition? giverMap)
+    {
+        var fare = giverMap is null || player.CurrentMap?.Definition == giverMap
+            ? 0
+            : MUIdleHuntMaps.Evaluate(player, giverMap.Number)?.Fare ?? 0;
+        return (long)quest.RequiredStartMoney + fare;
     }
 
     private static void Log(Player player, string what, string quest, MonsterDefinition giver)

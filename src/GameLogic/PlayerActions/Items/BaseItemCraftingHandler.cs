@@ -16,7 +16,16 @@ using MUnique.OpenMU.GameLogic.Views.NPC;
 /// </summary>
 public abstract class BaseItemCraftingHandler : IItemCraftingHandler
 {
+    [ThreadStatic]
+    private static bool previewing;
+
     private readonly CastleSiegeTaxProvider _castleSiegeTaxProvider = new();
+
+    /// <summary>
+    /// Gets a value indicating whether the current item check only previews a mix (MUIdle: the odds
+    /// shown while the player fills the tray) - a missing item is then no suspicious action.
+    /// </summary>
+    protected static bool IsPreviewing => previewing;
 
     /// <inheritdoc/>
     public async ValueTask<(CraftingResult Result, Item? Item)> DoMixAsync(Player player, byte socketSlot)
@@ -85,6 +94,25 @@ public abstract class BaseItemCraftingHandler : IItemCraftingHandler
     /// <returns>The price.</returns>
     internal int GetPriceOf(byte successRate, IList<CraftingRequiredItemLink> requiredItems)
         => this.GetPrice(successRate, requiredItems);
+
+    /// <summary>
+    /// Runs item checks as a preview (see <see cref="IsPreviewing"/>); they are synchronous.
+    /// </summary>
+    /// <typeparam name="T">The type of the result.</typeparam>
+    /// <param name="check">The checks.</param>
+    /// <returns>The result of the checks.</returns>
+    internal static T Preview<T>(Func<T> check)
+    {
+        previewing = true;
+        try
+        {
+            return check();
+        }
+        finally
+        {
+            previewing = false;
+        }
+    }
 
     /// <summary>
     /// Gets the price based on the success rate and the required items.

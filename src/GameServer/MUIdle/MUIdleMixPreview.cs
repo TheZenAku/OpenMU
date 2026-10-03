@@ -34,19 +34,12 @@ internal static class MUIdleMixPreview
             return;
         }
 
-        (CraftingResult? Error, byte SuccessRate, int Price)? preview;
-        byte? fits = null;
+        (CraftingResult? Error, byte SuccessRate, int Price, byte? Fits)? preview;
 
         // The action caches its crafting handlers in a plain dictionary: one caller at a time.
         lock (Craft)
         {
             preview = Craft.PreviewMix(player, mixType);
-            if (preview is not { Error: null }
-                && Craft.FindAppropriateCraftingByItems(player) is { } other
-                && other.Number != mixType)
-            {
-                fits = other.Number;
-            }
         }
 
         var cost = 0L;
@@ -63,7 +56,7 @@ internal static class MUIdleMixPreview
             result = preview is { } known ? known.Error?.ToString() : nameof(CraftingResult.IncorrectMixItems),
             rate = (int)(preview?.SuccessRate ?? 0),
             cost,
-            fits = (int?)fits,
+            fits = (int?)preview?.Fits,
         });
         await MUIdlePackets.SendJsonAsync(player, MUIdlePackets.MixPreviewSubCode, json).ConfigureAwait(false);
     }

@@ -81,8 +81,11 @@ public class ItemCraftAction
     /// </summary>
     /// <param name="player">The player.</param>
     /// <param name="mixTypeId">The mix type identifier.</param>
-    /// <returns>The preview; <c>null</c> when the opened NPC has no such crafting.</returns>
-    public (CraftingResult? Error, byte SuccessRate, int Price)? PreviewMix(Player player, byte mixTypeId)
+    /// <returns>
+    /// The preview, with the crafting the items fit (<c>Fits</c>) when the given one refuses them;
+    /// <c>null</c> when the opened NPC has no such crafting.
+    /// </returns>
+    public (CraftingResult? Error, byte SuccessRate, int Price, byte? Fits)? PreviewMix(Player player, byte mixTypeId)
     {
         var crafting = player.OpenedNpc?.Definition.ItemCraftings.FirstOrDefault(c => c.Number == mixTypeId);
         if (crafting is null || player.TemporaryStorage is null)
@@ -90,14 +93,18 @@ public class ItemCraftAction
             return null;
         }
 
-        var craftingHandler = this.GetCraftingHandler(crafting);
-        if (craftingHandler.TryGetRequiredItems(player, out var items, out var successRate) is { } error)
+        return BaseItemCraftingHandler.Preview<(CraftingResult? Error, byte SuccessRate, int Price, byte? Fits)?>(() =>
         {
-            return (error, 0, 0);
-        }
+            var craftingHandler = this.GetCraftingHandler(crafting);
+            if (craftingHandler.TryGetRequiredItems(player, out var items, out var successRate) is { } error)
+            {
+                var fits = this.FindAppropriateCraftingByItems(player)?.Number;
+                return (error, 0, 0, fits == mixTypeId ? null : fits);
+            }
 
-        var price = craftingHandler is BaseItemCraftingHandler baseHandler ? baseHandler.GetPriceOf(successRate, items) : 0;
-        return (null, successRate, price);
+            var price = craftingHandler is BaseItemCraftingHandler baseHandler ? baseHandler.GetPriceOf(successRate, items) : 0;
+            return (null, successRate, price, null);
+        });
     }
 
     private IItemCraftingHandler GetCraftingHandler(ItemCrafting crafting)

@@ -59,7 +59,31 @@ public class MUIdleMixPreviewTest
         Assert.Multiple(() =>
         {
             Assert.That(action.PreviewMix(player, MixNumber)?.Error, Is.EqualTo(CraftingResult.LackingMixItems));
+            Assert.That(action.PreviewMix(player, MixNumber)?.Fits, Is.Null);
             Assert.That(action.PreviewMix(player, MixNumber + 1), Is.Null);
+        });
+    }
+
+    /// <summary>
+    /// Items the picked crafting refuses name the crafting they fit.
+    /// </summary>
+    [Test]
+    public async ValueTask NamesTheCraftingTheItemsFitAsync()
+    {
+        var (player, _) = await CreatePlayerAtMachineAsync().ConfigureAwait(false);
+        var other = new BasicModel.ItemCrafting { Id = Guid.NewGuid(), Number = MixNumber + 1, SimpleCraftingSettings = new BasicModel.SimpleCraftingSettings { SuccessPercent = 10 } };
+        var required = new BasicModel.ItemCraftingRequiredItem { MinimumAmount = 1, MaximumAmount = 1, MaximumItemLevel = 15 };
+        required.PossibleItems.Add(CreateDefinition());
+        other.SimpleCraftingSettings.RequiredItems.Add(required);
+        player.OpenedNpc!.Definition.ItemCraftings.Add(other);
+        await player.TemporaryStorage!.AddItemAsync(0, CreateItem(required.PossibleItems.First())).ConfigureAwait(false);
+
+        var preview = new ItemCraftAction().PreviewMix(player, MixNumber);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(preview?.Error, Is.EqualTo(CraftingResult.LackingMixItems));
+            Assert.That(preview?.Fits, Is.EqualTo(MixNumber + 1));
         });
     }
 
@@ -72,13 +96,13 @@ public class MUIdleMixPreviewTest
         var settings = new BasicModel.SimpleCraftingSettings { Money = 1_000, MoneyPerFinalSuccessPercentage = 100, SuccessPercent = 50 };
         settings.RequiredItems.Add(required);
         var npc = new BasicModel.MonsterDefinition { NpcWindow = NpcWindow.ChaosMachine };
-        npc.ItemCraftings.Add(new BasicModel.ItemCrafting { Number = MixNumber, SimpleCraftingSettings = settings });
+        npc.ItemCraftings.Add(new BasicModel.ItemCrafting { Id = Guid.NewGuid(), Number = MixNumber, SimpleCraftingSettings = settings });
         player.OpenedNpc = new NonPlayerCharacter(null!, npc, null!);
         return (player, jewel);
     }
 
     private static ItemDefinition CreateDefinition()
-        => new BasicModel.ItemDefinition { Width = 1, Height = 1, Durability = 1 };
+        => new BasicModel.ItemDefinition { Id = Guid.NewGuid(), Width = 1, Height = 1, Durability = 1 };
 
     private static Item CreateItem(ItemDefinition definition)
     {

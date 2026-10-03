@@ -307,7 +307,7 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
             return;
         }
 
-        if (SpawnPoint(gameMap, boss, definition) is not { } point)
+        if (SpawnPoint(gameMap, boss, definition, gameContext) is not { } point)
         {
             logger.LogWarning("MUIdle world boss {Boss}: no walkable tile on {Map}.", boss.Name, gameMap.Definition.Name);
             return;
@@ -335,30 +335,96 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         await AnnounceAsync(gameContext, $"World boss {boss.Name} appeared in {mapName}!", $"Chefe do mundo {boss.Name} apareceu em {mapName}!").ConfigureAwait(false);
     }
 
-    /// <summary>The configured point, else the middle of the monster's own spawn area on that map, else any walkable tile.</summary>
-    private static Point? SpawnPoint(GameMap gameMap, WorldBossDefinition boss, MonsterDefinition definition)
+    /// <summary>
+    /// The configured point; else a tile a player can walk to from where the map's warp lands - the
+    /// one of the monster's own spawn area nearest its middle, or the reachable tile nearest that area.
+    /// (A spot behind walls or on an upper floor joined only by inner gates, like Lost Tower's, was
+    /// never reached: three of the first four bosses left unhurt.)
+    /// </summary>
+    private static Point? SpawnPoint(GameMap gameMap, WorldBossDefinition boss, MonsterDefinition definition, IGameContext gameContext)
     {
         if (boss.X > 0 && boss.Y > 0)
         {
             return new Point(boss.X, boss.Y);
         }
 
-        if (gameMap.Definition.MonsterSpawns.FirstOrDefault(a => a.MonsterDefinition == definition) is { } own)
+        var terrain = gameMap.Terrain;
+        var reachable = ReachableFromWarp(gameMap, gameContext);
+        if (reachable is null)
         {
-            var terrain = gameMap.Terrain;
-            for (var x = (int)own.X1; x <= own.X2; x++)
+            return terrain.RandomWalkableCoordinate;
+        }
+
+        var own = gameMap.Definition.MonsterSpawns.FirstOrDefault(a => a.MonsterDefinition == definition);
+        int centerX = own is null ? 128 : (own.X1 + own.X2) / 2, centerY = own is null ? 128 : (own.Y1 + own.Y2) / 2;
+        bool InOwnArea(int x, int y) => own is not null && x >= own.X1 && x <= own.X2 && y >= own.Y1 && y <= own.Y2;
+
+        Point? best = null;
+        var bestScore = int.MaxValue;
+        for (var x = 0; x < 256; x++)
+        {
+            for (var y = 0; y < 256; y++)
             {
-                for (var y = (int)own.Y1; y <= own.Y2; y++)
+                if (!reachable[x, y] || terrain.SafezoneMap[x, y])
                 {
-                    if (terrain.WalkMap[x, y] && !terrain.SafezoneMap[x, y])
-                    {
-                        return new Point((byte)x, (byte)y);
-                    }
+                    continue;
+                }
+
+                // A tile of the own area always beats one outside it.
+                var score = Math.Abs(x - centerX) + Math.Abs(y - centerY) + (InOwnArea(x, y) ? 0 : 1000);
+                if (score < bestScore)
+                {
+                    best = new Point((byte)x, (byte)y);
+                    bestScore = score;
                 }
             }
         }
 
-        return gameMap.Terrain.RandomWalkableCoordinate;
+        return best ?? terrain.RandomWalkableCoordinate;
+    }
+
+    /// <summary>The walkable tiles connected, on foot, to the landing area of a warp to the map (null without one).</summary>
+    private static bool[,]? ReachableFromWarp(GameMap gameMap, IGameContext gameContext)
+    {
+        var gate = gameContext.Configuration.WarpList
+            .Where(w => w.Gate?.Map?.Number == gameMap.Definition.Number)
+            .OrderBy(w => w.LevelRequirement)
+            .Select(w => w.Gate)
+            .FirstOrDefault();
+        if (gate is null)
+        {
+            return null;
+        }
+
+        var walk = gameMap.Terrain.WalkMap;
+        var seen = new bool[256, 256];
+        var queue = new Queue<(int X, int Y)>();
+        for (var x = (int)gate.X1; x <= gate.X2; x++)
+        {
+            for (var y = (int)gate.Y1; y <= gate.Y2; y++)
+            {
+                if (walk[x, y] && !seen[x, y])
+                {
+                    seen[x, y] = true;
+                    queue.Enqueue((x, y));
+                }
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            var (x, y) = queue.Dequeue();
+            foreach (var (nx, ny) in new[] { (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1) })
+            {
+                if (nx is >= 0 and < 256 && ny is >= 0 and < 256 && walk[nx, ny] && !seen[nx, ny])
+                {
+                    seen[nx, ny] = true;
+                    queue.Enqueue((nx, ny));
+                }
+            }
+        }
+
+        return seen;
     }
 
     private static ValueTask AnnounceAsync(IGameContext gameContext, string english, string portuguese)

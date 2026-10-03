@@ -28,6 +28,13 @@ public static partial class DatabaseConnectionStringHelper
     public static string DbAdminPasswordVariableName { get; } = "DB_ADMIN_PW";
 
     /// <summary>
+    /// Gets the prefix of the environment variables which override the password of the other roles,
+    /// by their upper-case name: <c>DB_PW_ACCOUNT</c>, <c>DB_PW_CONFIG</c>, <c>DB_PW_FRIEND</c>, <c>DB_PW_GUILD</c>.
+    /// A rotated password then lives outside the (versioned) ConnectionSettings.xml.
+    /// </summary>
+    public static string DbRolePasswordVariablePrefix { get; } = "DB_PW_";
+
+    /// <summary>
     /// Applies the environment variables to the connection string of the specified setting, in place.
     /// </summary>
     /// <param name="setting">The setting to adjust.</param>
@@ -68,10 +75,22 @@ public static partial class DatabaseConnectionStringHelper
                 connectionString = connectionString.Replace("Password=admin;", $"Password={dbAdminPassword};", StringComparison.Ordinal);
             }
         }
+        else if (UserRegex().Match(connectionString) is { Success: true } user
+                 && Environment.GetEnvironmentVariable(DbRolePasswordVariablePrefix + user.Groups[1].Value.ToUpperInvariant()) is { Length: > 0 } rolePassword)
+        {
+            // An evaluator, so a '$' in the password is not read as a substitution.
+            connectionString = PasswordRegex().Replace(connectionString, _ => $"Password={rolePassword};");
+        }
 
         return connectionString;
     }
 
     [GeneratedRegex("Server=[^;]+;")]
     private static partial Regex ServerRegex();
+
+    [GeneratedRegex("User Id=([^;]+?);")]
+    private static partial Regex UserRegex();
+
+    [GeneratedRegex("Password=[^;]*;")]
+    private static partial Regex PasswordRegex();
 }

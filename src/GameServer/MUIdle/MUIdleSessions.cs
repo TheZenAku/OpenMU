@@ -47,6 +47,72 @@ internal static class MUIdleSessions
         => gameContext is GameContext { IsDisposed: true } or GameContext { IsDisposing: true } or GameContext { ArePeriodicTasksStopped: true };
 
     /// <summary>
+    /// Keeps a crash's view of an online player persisted (called by the periodic online save): with HUNT
+    /// running where it could go on offline, the marker a regular shutdown writes (see
+    /// <see cref="OnDisconnectingAsync"/>) - a restart after an unclean end (a killed process, the OS
+    /// ending the session, a power cut) brings the character back as an offline hunter; else no marker.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>Whether the character carries the marker now.</returns>
+    public static async ValueTask<bool> UpdateCrashMarkerAsync(RemotePlayer player)
+    {
+        if (player.SelectedCharacter is not { } character || player.IsTemplatePlayer)
+        {
+            return false;
+        }
+
+        var configuration = GetConfiguration(player.GameContext);
+        var marked = false;
+        await player.RunPersistenceExclusiveAsync(async () =>
+        {
+            var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+            if (CanContinueOffline(player, configuration))
+            {
+                state.HuntActive = true;
+                MarkContinuesOffline(player, state);
+                marked = true;
+            }
+            else if (state.OfflineSince is not null)
+            {
+                state.OfflineSince = null;
+                state.OfflineStatisticsJson = null;
+            }
+        }).ConfigureAwait(false);
+        return marked;
+    }
+
+    /// <summary>
+    /// Whether the hunt of an online player would go on offline if it left now.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="configuration">The MUIdle configuration.</param>
+    /// <returns><c>true</c>, if it would.</returns>
+    internal static bool CanContinueOffline(Player player, MUIdleConfiguration configuration)
+        => player.Attributes?[Stats.IsMuHelperActive] > 0
+           && configuration.ContinueHuntingOnDisconnect
+           && player.IsAlive
+           && player.CurrentMap is not null
+           && player.CurrentMiniGame is null
+           && !player.IsAtSafezone();
+
+    private static OfflineSessionStatistics MarkContinuesOffline(Player player, MUIdleCharacterState state)
+    {
+        var statistics = new OfflineSessionStatistics
+        {
+            StartedUtc = DateTime.UtcNow,
+            StartLevel = player.Level,
+            EndLevel = player.Level,
+            StartMasterLevel = (int)(player.Attributes?[Stats.MasterLevel] ?? 0),
+            EndMasterLevel = (int)(player.Attributes?[Stats.MasterLevel] ?? 0),
+            StartMoney = player.Money,
+            EndMoney = player.Money,
+        };
+        state.OfflineSince = statistics.StartedUtc;
+        state.OfflineStatisticsJson = statistics.ToJson();
+        return statistics;
+    }
+
+    /// <summary>
     /// Called when a real player advanced to <see cref="PlayerState.Disconnected"/>, right before its
     /// session gets saved.
     /// </summary>
@@ -64,29 +130,15 @@ internal static class MUIdleSessions
 
         var configuration = GetConfiguration(player.GameContext);
         var shuttingDown = IsShuttingDown(player.GameContext);
-        var canHunt = helperRunning
-                      && configuration.ContinueHuntingOnDisconnect
-                      && player.IsAlive
-                      && player.CurrentMap is not null
-                      && player.CurrentMiniGame is null
-                      && !player.IsAtSafezone();
-        if (!canHunt)
+        if (!CanContinueOffline(player, configuration))
         {
+            // No offline hunt follows: a crash marker of the periodic save must not bring it back later.
+            state.OfflineSince = null;
+            state.OfflineStatisticsJson = null;
             return;
         }
 
-        var statistics = new OfflineSessionStatistics
-        {
-            StartedUtc = DateTime.UtcNow,
-            StartLevel = player.Level,
-            EndLevel = player.Level,
-            StartMasterLevel = (int)(player.Attributes?[Stats.MasterLevel] ?? 0),
-            EndMasterLevel = (int)(player.Attributes?[Stats.MasterLevel] ?? 0),
-            StartMoney = player.Money,
-            EndMoney = player.Money,
-        };
-        state.OfflineSince = statistics.StartedUtc;
-        state.OfflineStatisticsJson = statistics.ToJson();
+        var statistics = MarkContinuesOffline(player, state);
 
         if (shuttingDown)
         {

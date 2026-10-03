@@ -134,6 +134,8 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
 
                 try
                 {
+                    // With the crash marker in the same save: an unclean end restores a HUNT as offline hunt.
+                    await MUIdleSessions.UpdateCrashMarkerAsync((RemoteView.RemotePlayer)player).ConfigureAwait(false);
                     await player.SaveProgressAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex)

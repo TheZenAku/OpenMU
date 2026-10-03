@@ -213,6 +213,13 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private static readonly TimeSpan BarrenMapDuration = TimeSpan.FromMinutes(3);
 
+    /// <summary>
+    /// How long a map the bot left as barren stays off the list of better maps: without this memory the
+    /// better-map choice sent it straight back up after the warp cooldown, and a bot bounced between a
+    /// barren map and the one below every three minutes (seen: Lost Tower and Dungeon, 2026-10-03).
+    /// </summary>
+    private static readonly TimeSpan BarrenMapMemory = TimeSpan.FromMinutes(20);
+
     /// <summary>Cooldown for following the party leader to another map (shorter, so the group regroups quickly).</summary>
     private static readonly TimeSpan FollowWarpCooldown = TimeSpan.FromSeconds(20);
 
@@ -285,6 +292,8 @@ internal sealed class BotNavigator : AsyncDisposable
     private DateTimeOffset _nextRallyReachCheckUtc = DateTimeOffset.MinValue;
 
     private DateTime _nextErrandCheckUtc = DateTime.MinValue;
+
+    private readonly Dictionary<short, DateTimeOffset> _barrenUntil = [];
     private Point _lastPosition;
     private DateTime _lastMoveUtc = DateTime.MinValue;
     private DateTime _nextEquipCheckUtc = DateTime.MinValue;
@@ -1745,6 +1754,12 @@ internal sealed class BotNavigator : AsyncDisposable
         ExitGate targetGate;
         GameMapDefinition? targetMap;
         int targetLevel;
+        if (mapIsBarren && currentMap is not null)
+        {
+            // Remembered for a while, so the better-map choice does not send the bot right back.
+            this._barrenUntil[currentMap.Number] = this._timeProvider.GetUtcNow() + BarrenMapMemory;
+        }
+
         if ((mapIsBarren && this.TryPickEasierMap(out var easierWarp, out targetMap, out targetLevel))
             || this.TryPickBetterMap(mustEscape, out easierWarp, out targetMap, out targetLevel))
         {
@@ -2586,6 +2601,14 @@ internal sealed class BotNavigator : AsyncDisposable
         foreach (var candidate in this._player.GameContext.Configuration.Maps)
         {
             if (ReferenceEquals(candidate, current))
+            {
+                continue;
+            }
+
+            // A map left as barren a short while ago is no better map (see BarrenMapMemory).
+            if (!escape
+                && this._barrenUntil.TryGetValue(candidate.Number, out var barrenUntil)
+                && this._timeProvider.GetUtcNow() < barrenUntil)
             {
                 continue;
             }

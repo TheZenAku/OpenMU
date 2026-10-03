@@ -47,4 +47,9 @@ public class MUIdleCharacterState
     /// Gets or sets the idle settings which are not part of the MU Helper configuration, as JSON.
     /// </summary>
     public string? SettingsJson { get; set; }
+
+    /// <summary>
+    /// Gets or sets the daily contracts of the character (reset at 00:00 UTC), as JSON.
+    /// </summary>
+    public string? ContractsJson { get; set; }
 }

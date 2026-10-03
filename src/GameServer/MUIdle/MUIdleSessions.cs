@@ -338,6 +338,7 @@ internal static class MUIdleSessions
             events = MUIdleEvents.Info(player, settings),
             bosses = MUIdleWorldBossPlugIn.Snapshot(player.GameContext),
             progression = MUIdleSeason.Snapshot(player, GetConfiguration(player.GameContext)),
+            contracts = MUIdleContracts.Snapshot(player, state),
         });
         return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
     }

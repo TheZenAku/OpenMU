@@ -2779,6 +2779,9 @@ namespace MUnique.OpenMU.Persistence.EntityFramework.Migrations
                     b.Property<Guid>("CharacterId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ContractsJson")
+                        .HasColumnType("text");
+
                     b.Property<bool>("HuntActive")
                         .HasColumnType("boolean");
 

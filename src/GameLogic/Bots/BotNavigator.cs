@@ -124,6 +124,9 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private const int TravelStopRange = HuntingRange;
 
+    /// <summary>How close to a rally point (a world boss) the bot walks before it fights there.</summary>
+    private const double RallyRange = 6;
+
     /// <summary>Search limit for the travel pathfinder, generous enough for a full cross-map route.</summary>
     private const int TravelSearchLimit = 20000;
 
@@ -808,6 +811,25 @@ internal sealed class BotNavigator : AsyncDisposable
         // fight (a wedged walk or blocked path), and after a much longer grace when huntable monsters are
         // around - standing still next to monsters usually just means fighting, but if the position stays
         // frozen well beyond that, something is wedged (e.g. a monster in range that cannot be reached).
+        // A rally point (a live world boss) on this map: the monsters on the way do not hold the bot
+        // back - it fought the entrance's trash for a quarter of an hour before. It walks to the spot,
+        // and its combat centre is the spot, so the targets it picks are the ones there.
+        if (this._policy.Rally?.Invoke() is { } rally && rally.Map == map.Definition.Number && !inSafezone)
+        {
+            this._player.HuntingOrigin = rally.Spot;
+            if (this._player.Position.EuclideanDistanceTo(rally.Spot) > RallyRange)
+            {
+                this._destination = rally.Spot;
+                this._hasDestination = true;
+                if (!await this.TravelTowardAsync(map, rally.Spot, cancellationToken).ConfigureAwait(false))
+                {
+                    this._hasDestination = false;
+                }
+
+                return;
+            }
+        }
+
         var stuckTimeout = monstersNearby > 0 ? StuckWithMonstersTimeout : StuckTimeout;
         var stuck = DateTime.UtcNow - this._lastMoveUtc > stuckTimeout;
         if (stuck)

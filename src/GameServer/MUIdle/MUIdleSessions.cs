@@ -336,6 +336,7 @@ internal static class MUIdleSessions
             }),
             ground = ground is { } point ? new { x = (int)point.X, y = (int)point.Y } : null,
             events = MUIdleEvents.Info(player, settings),
+            bosses = MUIdleWorldBossPlugIn.Snapshot(player.GameContext),
         });
         return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
     }

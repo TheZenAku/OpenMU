@@ -80,6 +80,18 @@ public sealed record BotNavigatorPolicy
     public Func<Item, bool>? IsJunk { get; init; }
 
     /// <summary>
+    /// Gets the number of the map to hunt on whenever the bot can get there (legal warp, affordable
+    /// fare, entry requirements); <c>null</c> lets the navigator choose. On that map the bot stays: no
+    /// stepping down from a barren stretch, no moving up.
+    /// </summary>
+    public int? PinnedMap { get; init; }
+
+    /// <summary>
+    /// Gets a callback told what the bot starts doing, with the map it concerns.
+    /// </summary>
+    public Action<BotActivity, string?>? ActivityChanged { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

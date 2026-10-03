@@ -11,6 +11,7 @@ using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameServer.RemoteView;
+using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.Persistence;
 
 /// <summary>
@@ -284,9 +285,11 @@ internal static class MUIdleSessions
     /// <param name="player">The player.</param>
     /// <param name="state">The state.</param>
     /// <param name="resume">If set to <c>true</c>, the client should start HUNT as soon as it's ready.</param>
-    public static ValueTask SendStateAsync(RemotePlayer player, MUIdleCharacterState state, bool resume = false)
+    /// <param name="ground">Where to walk before (re)starting HUNT, after a warp to the pinned map.</param>
+    public static ValueTask SendStateAsync(RemotePlayer player, MUIdleCharacterState state, bool resume = false, Point? ground = null)
     {
         var settings = MUIdleSettings.Parse(state.SettingsJson);
+        MUIdleHuntTracker.SetSettings(player, settings, state.HuntActive);
 
         // The client knows items by their inventory slot, the locks reference the item ids.
         var locked = settings.LockedItems.ToHashSet();
@@ -301,6 +304,17 @@ internal static class MUIdleSessions
             resume,
             settings = JsonDocument.Parse(settings.ToJson()).RootElement,
             lockedSlots,
+            activity = MUIdleHuntTracker.Snapshot(player),
+            maps = MUIdleHuntMaps.Options(player).Select(o => new
+            {
+                number = (int)o.Map.Number,
+                name = o.Map.Name.ValueInNeutralLanguage,
+                minLevel = o.MinLevel,
+                fare = o.Fare,
+                available = o.Available,
+                reason = o.Refusal is { } refusal ? MUIdleHuntTracker.RefusalName(refusal) : null,
+            }),
+            ground = ground is { } point ? new { x = (int)point.X, y = (int)point.Y } : null,
         });
         return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
     }

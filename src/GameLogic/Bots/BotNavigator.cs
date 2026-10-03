@@ -1043,6 +1043,7 @@ internal sealed class BotNavigator : AsyncDisposable
                 this._lastWarpUtc = this._timeProvider.GetUtcNow();
                 this._nextShoppingCheckUtc = DateTime.UtcNow; // start the trip on the new map right away
                 this._player.Logger.LogDebug("Bot '{Name}' warps home to {Map} for a shopping trip - no merchant on its map.", this._player.Name, homeMap.Name);
+                this.Report(BotActivity.Shopping, homeMap.Name.ValueInNeutralLanguage);
                 await this._player.WarpToAsync(homeGate).ConfigureAwait(false);
                 return true;
             }
@@ -1064,6 +1065,7 @@ internal sealed class BotNavigator : AsyncDisposable
         this._shoppingTarget = merchantPosition;
         this._player.IsOnShoppingTrip = true;
         this._player.Logger.LogDebug("Bot '{Name}' heads to the merchant for a shopping trip.", this._player.Name);
+        this.Report(BotActivity.Shopping, map.Definition.Name.ValueInNeutralLanguage);
         return true;
     }
 
@@ -1149,6 +1151,7 @@ internal sealed class BotNavigator : AsyncDisposable
                 this._lastWarpUtc = this._timeProvider.GetUtcNow();
                 this._nextBuffCheckUtc = DateTime.UtcNow; // start the trip on the new map right away
                 this._player.Logger.LogDebug("Bot '{Name}' warps home to {Map} for its buff - no buff NPC on its map.", this._player.Name, homeMap.Name);
+                this.Report(BotActivity.Buff, homeMap.Name.ValueInNeutralLanguage);
                 await this._player.WarpToAsync(homeGate).ConfigureAwait(false);
                 return true;
             }
@@ -1170,6 +1173,7 @@ internal sealed class BotNavigator : AsyncDisposable
         this._buffTarget = buffNpcPosition;
         this._player.IsOnBuffTrip = true;
         this._player.Logger.LogDebug("Bot '{Name}' heads to the buff NPC for its free buff.", this._player.Name);
+        this.Report(BotActivity.Buff, map.Definition.Name.ValueInNeutralLanguage);
         return true;
     }
 
@@ -1488,6 +1492,29 @@ internal sealed class BotNavigator : AsyncDisposable
         // ground to earn its way back up, instead of walking between hunting grounds forever.
         var mapIsBarren = DateTime.UtcNow - this._player.LastAttackUtc > BarrenMapDuration;
 
+        // A map the player chose: go there whenever the game would let a player go there, and stay.
+        // Out of reach for now (level, fare, entry requirement), the regular choice below keeps the
+        // character earning meanwhile, and the next check tries again.
+        if (this._policy.PinnedMap is { } pinned
+            && this._player.GameContext.Configuration.Maps.FirstOrDefault(m => m.Number == pinned) is { } pinnedMap)
+        {
+            if (currentMap?.Number == pinned)
+            {
+                if (!mustEscape)
+                {
+                    return false;
+                }
+            }
+            else if (this._timeProvider.GetUtcNow() - this._lastWarpUtc >= WarpCooldown
+                     && !pinnedMap.TryGetRequirementError(this._player, out _)
+                     && this.TryGetLegalWarp(pinnedMap, out var pinnedWarp)
+                     && this.CanAffordWarp(pinnedWarp)
+                     && pinnedWarp.Gate is { } pinnedGate)
+            {
+                return await this.WarpAsync(pinnedWarp, pinnedGate, pinnedMap, this.BestSafeLevel(pinnedMap), botLevel).ConfigureAwait(false);
+            }
+        }
+
         if ((plainLevel < this.GetMinWarpLevel() && !mustEscape && !mapIsBarren)
             || this._timeProvider.GetUtcNow() - this._lastWarpUtc < WarpCooldown)
         {
@@ -1519,6 +1546,14 @@ internal sealed class BotNavigator : AsyncDisposable
             return false;
         }
 
+        return await this.WarpAsync(fare, targetGate, targetMap!, targetLevel, botLevel).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Warps to the chosen map: through the warp action when there is a fare, else straight to the gate.
+    /// </summary>
+    private async ValueTask<bool> WarpAsync(WarpInfo? fare, ExitGate targetGate, GameMapDefinition targetMap, int targetLevel, int botLevel)
+    {
         // The barren timer restarts with the move: the new map deserves the same chance to prove itself
         // before it is judged, and without this every following tick would warp again.
         this._player.LastAttackUtc = DateTime.UtcNow;
@@ -1529,9 +1564,10 @@ internal sealed class BotNavigator : AsyncDisposable
             "Bot {Character} (level {Level}) warping to map {Map} (monsters ~{MonsterLevel}, fare {Fare} zen).",
             this._player.Name,
             botLevel,
-            targetMap!.Name,
+            targetMap.Name,
             targetLevel,
             fare?.Costs ?? 0);
+        this.Report(BotActivity.Warping, targetMap.Name.ValueInNeutralLanguage);
 
         if (fare is not null)
         {
@@ -1664,6 +1700,7 @@ internal sealed class BotNavigator : AsyncDisposable
             this.GetBotLevel(),
             ground,
             groundLevel);
+        this.Report(BotActivity.Travelling, map.Definition.Name.ValueInNeutralLanguage);
 
         if (!await this.TravelTowardAsync(map, ground, cancellationToken).ConfigureAwait(false))
         {
@@ -2101,6 +2138,22 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     /// <param name="warp">The warp to pay for.</param>
     private bool CanAffordWarp(WarpInfo warp) => this._player.Money >= warp.Costs;
+
+    /// <summary>
+    /// Tells the policy's <see cref="BotNavigatorPolicy.ActivityChanged"/> what the bot starts doing.
+    /// A failing listener must not stop the bot.
+    /// </summary>
+    private void Report(BotActivity activity, string? map)
+    {
+        try
+        {
+            this._policy.ActivityChanged?.Invoke(activity, map);
+        }
+        catch (Exception ex)
+        {
+            this._player.Logger.LogDebug(ex, "Bot {Character}: activity listener failed.", this._player.Name);
+        }
+    }
 
     /// <summary>
     /// Gets the escape gate to the bot's class hometown, for when it must leave its current map but is

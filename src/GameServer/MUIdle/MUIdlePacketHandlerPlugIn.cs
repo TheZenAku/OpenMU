@@ -10,6 +10,7 @@ using System.Text.Json;
 using MUnique.OpenMU.DataModel;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
+using MUnique.OpenMU.GameLogic.PlayerActions;
 using MUnique.OpenMU.GameServer.MessageHandler;
 using MUnique.OpenMU.GameServer.RemoteView;
 using MUnique.OpenMU.Persistence;
@@ -25,6 +26,8 @@ using MUnique.OpenMU.PlugIns;
 public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
 {
     private const int MaximumLockedItems = 300;
+
+    private static readonly WarpAction Warp = new();
 
     /// <inheritdoc />
     public bool IsEncryptionExpected => false;
@@ -130,11 +133,32 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
     {
         using var document = JsonDocument.Parse(payload);
         var hunt = document.RootElement.TryGetProperty("hunt", out var huntElement) && huntElement.ValueKind == JsonValueKind.True;
+        MUIdleSettings? settings = null;
+        MUIdleCharacterState? stored = null;
         await player.RunPersistenceExclusiveAsync(async () =>
         {
             var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
             state.HuntActive = hunt;
+            settings = MUIdleSettings.Parse(state.SettingsJson);
+            stored = state;
         }).ConfigureAwait(false);
         await player.SaveProgressAsync().ConfigureAwait(false);
+        MUIdleHuntTracker.SetHuntIntent(player, hunt);
+
+        // The same rule as offline: with a pinned map elsewhere, HUNT starts by going there.
+        if (hunt
+            && settings is { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned }
+            && player.CurrentMap?.Definition.Number != pinned
+            && MUIdleHuntMaps.Evaluate(player, pinned) is { Warp: { } warp } target)
+        {
+            MUIdleHuntTracker.Report(player, HuntActivityKind.Warping, target.Map.Name.ValueInNeutralLanguage);
+
+            // Through the player action: the player pays the fare and passes every check of a warp.
+            await Warp.WarpToAsync(player, warp).ConfigureAwait(false);
+            if (player.CurrentMap?.Definition.Number == pinned)
+            {
+                await MUIdleSessions.SendStateAsync(player, stored!, resume: true, ground: MUIdleHuntMaps.PickGround(player, target.Map)).ConfigureAwait(false);
+            }
+        }
     }
 }

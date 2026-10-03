@@ -24,6 +24,9 @@ internal static class MUIdlePackets
     /// <summary>Server to client: the summary of a finished offline hunting session.</summary>
     public const byte OfflineSummarySubCode = 0x02;
 
+    /// <summary>Server to client: what the hunt does now (<see cref="MUIdleHuntTracker"/>).</summary>
+    public const byte ActivitySubCode = 0x03;
+
     /// <summary>Client to server: save the idle settings (JSON of <see cref="MUIdleSettings"/>).</summary>
     public const byte SaveSettingsSubCode = 0x10;
 

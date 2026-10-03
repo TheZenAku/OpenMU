@@ -42,8 +42,13 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
     {
         this.Settings = settings;
         this.Statistics = statistics;
-        this._deathHandler = (_, _) => this.Statistics.AddDeath();
+        this._deathHandler = (_, _) =>
+        {
+            this.Statistics.AddDeath();
+            MUIdleHuntTracker.Report(this, HuntActivityKind.Dead);
+        };
         this.Died += this._deathHandler;
+        MUIdleHuntTracker.SetSettings(this, settings);
     }
 
     /// <summary>
@@ -145,7 +150,10 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         Parties = false,
         Revenge = false,
         BuffTrips = true,
-        WarpBetweenMaps = this.Settings.AutoMapSelection,
+        // Manual: never changes maps. Auto: the navigator's own choice. A pinned map: there, when it can.
+        WarpBetweenMaps = this.Settings.AutoMapSelection || this.Settings.PreferredMap is not null,
+        PinnedMap = this.Settings.AutoMapSelection ? null : this.Settings.PreferredMap,
+        ActivityChanged = (activity, map) => MUIdleHuntTracker.Report(this, MUIdleHuntTracker.FromBot(activity), map),
         SellJunk = this.Settings.AutoSell,
         BuyPotions = this.Settings.AutoBuyPotions,
         RepairAtMerchant = this.Settings.AutoRepair,
@@ -198,6 +206,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
             if (killedObject is not null)
             {
                 this._player.Statistics.AddKill();
+                MUIdleHuntTracker.Report(this._player, HuntActivityKind.Hunting);
             }
 
             return ValueTask.CompletedTask;

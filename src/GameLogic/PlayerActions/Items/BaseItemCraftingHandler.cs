@@ -78,6 +78,15 @@ public abstract class BaseItemCraftingHandler : IItemCraftingHandler
     public abstract CraftingResult? TryGetRequiredItems(Player player, out IList<CraftingRequiredItemLink> items, out byte successRateByItems);
 
     /// <summary>
+    /// Gets the untaxed price of a mix, without mixing (MUIdle: the odds shown before the mix).
+    /// </summary>
+    /// <param name="successRate">The success rate.</param>
+    /// <param name="requiredItems">The required items.</param>
+    /// <returns>The price.</returns>
+    internal int GetPriceOf(byte successRate, IList<CraftingRequiredItemLink> requiredItems)
+        => this.GetPrice(successRate, requiredItems);
+
+    /// <summary>
     /// Gets the price based on the success rate and the required items.
     /// </summary>
     /// <param name="successRate">The success rate.</param>

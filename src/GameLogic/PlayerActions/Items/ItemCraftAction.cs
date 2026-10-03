@@ -31,11 +31,7 @@ public class ItemCraftAction
             return;
         }
 
-        if (!this._craftingHandlerCache.TryGetValue(crafting, out var craftingHandler))
-        {
-            craftingHandler = this.CreateCraftingHandler(crafting);
-            this._craftingHandlerCache.Add(crafting, craftingHandler);
-        }
+        var craftingHandler = this.GetCraftingHandler(crafting);
 
         (CraftingResult, Item?) result;
         try
@@ -69,13 +65,7 @@ public class ItemCraftAction
             // chaos weapon crafting, so we set a descending order so it gets checked first
             foreach (var itemCrafting in npc.ItemCraftings.OrderByDescending(c => c.Number))
             {
-                if (!this._craftingHandlerCache.TryGetValue(itemCrafting, out var craftingHandler))
-                {
-                    craftingHandler = this.CreateCraftingHandler(itemCrafting);
-                    this._craftingHandlerCache.Add(itemCrafting, craftingHandler);
-                }
-
-                if (craftingHandler.TryGetRequiredItems(player, out _, out _) is null)
+                if (this.GetCraftingHandler(itemCrafting).TryGetRequiredItems(player, out _, out _) is null)
                 {
                     return itemCrafting;
                 }
@@ -83,6 +73,42 @@ public class ItemCraftAction
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Previews a mix at the currently opened crafting NPC without mixing (MUIdle: the odds shown
+    /// before the mix): the crafting's own item check, its success rate and its untaxed price.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="mixTypeId">The mix type identifier.</param>
+    /// <returns>The preview; <c>null</c> when the opened NPC has no such crafting.</returns>
+    public (CraftingResult? Error, byte SuccessRate, int Price)? PreviewMix(Player player, byte mixTypeId)
+    {
+        var crafting = player.OpenedNpc?.Definition.ItemCraftings.FirstOrDefault(c => c.Number == mixTypeId);
+        if (crafting is null || player.TemporaryStorage is null)
+        {
+            return null;
+        }
+
+        var craftingHandler = this.GetCraftingHandler(crafting);
+        if (craftingHandler.TryGetRequiredItems(player, out var items, out var successRate) is { } error)
+        {
+            return (error, 0, 0);
+        }
+
+        var price = craftingHandler is BaseItemCraftingHandler baseHandler ? baseHandler.GetPriceOf(successRate, items) : 0;
+        return (null, successRate, price);
+    }
+
+    private IItemCraftingHandler GetCraftingHandler(ItemCrafting crafting)
+    {
+        if (!this._craftingHandlerCache.TryGetValue(crafting, out var craftingHandler))
+        {
+            craftingHandler = this.CreateCraftingHandler(crafting);
+            this._craftingHandlerCache.Add(crafting, craftingHandler);
+        }
+
+        return craftingHandler;
     }
 
     private IItemCraftingHandler CreateCraftingHandler(ItemCrafting crafting)

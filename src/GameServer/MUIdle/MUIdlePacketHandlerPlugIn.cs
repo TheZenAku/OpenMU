@@ -72,6 +72,16 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                     }
 
                     break;
+                case MUIdlePackets.RequestMixPreviewSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        if (request.RootElement.TryGetProperty("mixType", out var mixType) && mixType.TryGetByte(out var number))
+                        {
+                            await MUIdleMixPreview.SendAsync(remotePlayer, number).ConfigureAwait(false);
+                        }
+                    }
+
+                    break;
             }
         }
         catch (JsonException)

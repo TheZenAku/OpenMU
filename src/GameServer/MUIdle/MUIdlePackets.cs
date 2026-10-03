@@ -27,6 +27,9 @@ internal static class MUIdlePackets
     /// <summary>Server to client: what the hunt does now (<see cref="MUIdleHuntTracker"/>).</summary>
     public const byte ActivitySubCode = 0x03;
 
+    /// <summary>Server to client: the odds of a mix of the items in the crafting dialog (<see cref="MUIdleMixPreview"/>).</summary>
+    public const byte MixPreviewSubCode = 0x04;
+
     /// <summary>Client to server: save the idle settings (JSON of <see cref="MUIdleSettings"/>).</summary>
     public const byte SaveSettingsSubCode = 0x10;
 
@@ -41,6 +44,9 @@ internal static class MUIdlePackets
 
     /// <summary>Client to server: reset the character (the reset feature's own action and checks).</summary>
     public const byte ResetSubCode = 0x14;
+
+    /// <summary>Client to server: preview a mix of the items in the crafting dialog (<c>{"mixType":11}</c>).</summary>
+    public const byte RequestMixPreviewSubCode = 0x15;
 
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;

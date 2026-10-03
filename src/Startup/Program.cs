@@ -126,9 +126,28 @@ internal sealed class Program : IDisposable
 
         using var program = new Program();
         await program.InitializeAsync(args).ConfigureAwait(false);
+
+        // MUIdle: a stop request file (MUIDLE_STOP_FILE) ends the process like a confirmed CTRL+C. Unlike
+        // CTRL+C it reaches the process from any session or account (a Windows shutdown script runs as
+        // SYSTEM in another session than a stack started by a scheduled task).
+        var stopFile = Environment.GetEnvironmentVariable("MUIDLE_STOP_FILE");
+        var nextStopCheck = DateTime.UtcNow;
         while (!exitToken.IsCancellationRequested)
         {
             await Task.Delay(100).ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(stopFile) && DateTime.UtcNow >= nextStopCheck)
+            {
+                nextStopCheck = DateTime.UtcNow.AddSeconds(1);
+                if (File.Exists(stopFile))
+                {
+                    Log.Information("MUIdle: stop requested by {StopFile}; shutting down.", stopFile);
+#pragma warning disable VSTHRD103 // Call async methods when in an async method
+                    exitCts.Cancel();
+#pragma warning restore VSTHRD103 // Call async methods when in an async method
+                    break;
+                }
+            }
 
             if (_systemConfiguration?.ReadConsoleInput is true)
             {

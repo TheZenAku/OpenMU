@@ -96,6 +96,13 @@ public sealed class MUIdleSettings
     public bool QuestItemsFirst { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether HUNT accepts the class quests at their giver (paying the
+    /// quest's start fee) and hands them in when complete (<see cref="MUIdleQuests.ErrandFor(Player)"/>).
+    /// Off until the player turns it on: accepting spends Zen.
+    /// </summary>
+    public bool QuestsAuto { get; set; }
+
+    /// <summary>
     /// Gets or sets the auto build preset (Elf "support", Magic Gladiator "energy", Dark Lord "raven");
     /// <c>null</c> for the class default (<see cref="MUIdleAutoBuild.GetWeights(byte, string?)"/>).
     /// </summary>

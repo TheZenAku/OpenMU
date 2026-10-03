@@ -113,6 +113,12 @@ public sealed record BotNavigatorPolicy
     public Func<(int Min, int Max)?>? PreferredMonsterLevels { get; init; }
 
     /// <summary>
+    /// Gets an errand at an NPC the bot runs before it farms on (e.g. accepting or handing in a quest
+    /// at its giver, see <see cref="BotErrand"/>); <c>null</c> when there is none.
+    /// </summary>
+    public Func<BotErrand?>? Errand { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

@@ -219,6 +219,12 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <summary>Cooldown between expensive same-map gate searches after walking to the leader failed.</summary>
     private static readonly TimeSpan FollowWarpSearchCooldown = TimeSpan.FromSeconds(20);
 
+    /// <summary>How long a failed errand approach (no way, no warp, no NPC) waits before it is tried again.</summary>
+    private static readonly TimeSpan ErrandRetryDelay = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long after an errand's dialog the next errand check waits (its result settles first).</summary>
+    private static readonly TimeSpan ErrandSettleDelay = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// How long the party leader has to stay on a map before its bots follow him there. A leader who is
     /// only passing through (a town trip for supplies, a gate on the way somewhere) must not drag his
@@ -277,6 +283,8 @@ internal sealed class BotNavigator : AsyncDisposable
     private DateTimeOffset _nextFollowWarpSearchUtc = DateTimeOffset.MinValue;
 
     private DateTimeOffset _nextRallyReachCheckUtc = DateTimeOffset.MinValue;
+
+    private DateTime _nextErrandCheckUtc = DateTime.MinValue;
     private Point _lastPosition;
     private DateTime _lastMoveUtc = DateTime.MinValue;
     private DateTime _nextEquipCheckUtc = DateTime.MinValue;
@@ -909,6 +917,12 @@ internal sealed class BotNavigator : AsyncDisposable
             return;
         }
 
+        // An errand at an NPC (a quest at its giver) comes before farming on - after the logistics.
+        if (this._policy.Errand is not null && await this.TryErrandAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
         // Armed revenge (a player killed this bot; it respawned on the same map) overrides the
         // whole normal routine below, including following the party leader: the bot marches back to
         // the place of its death. A leader on a revenge march still drags its followers along - the
@@ -1108,6 +1122,106 @@ internal sealed class BotNavigator : AsyncDisposable
         this._player.Logger.LogDebug("Bot '{Name}' heads to the merchant for a shopping trip.", this._player.Name);
         this.Report(BotActivity.Shopping, map.Definition.Name.ValueInNeutralLanguage);
         return true;
+    }
+
+    /// <summary>
+    /// Drives an errand at an NPC (<see cref="BotNavigatorPolicy.Errand"/>): to its map through the warp
+    /// whose landing walks to it, into town when out in the field, up to the NPC, then the dialog in the
+    /// MU Helper tick. A failed approach backs off for a few minutes.
+    /// </summary>
+    private async ValueTask<bool> TryErrandAsync(GameMap map, bool inSafezone, CancellationToken cancellationToken)
+    {
+        if (DateTime.UtcNow < this._nextErrandCheckUtc || this._policy.Errand?.Invoke() is not { } errand)
+        {
+            return false;
+        }
+
+        var configuration = this._player.GameContext.Configuration;
+        var spawn = configuration.Maps.FirstOrDefault(m => m.Number == errand.MapNumber)?.MonsterSpawns
+            .FirstOrDefault(s => s.MonsterDefinition?.Number == errand.NpcNumber);
+        if (spawn is null)
+        {
+            this._player.Logger.LogDebug("Bot '{Name}': the NPC {Npc} of the errand '{Purpose}' stands nowhere.", this._player.Name, errand.NpcNumber, errand.Purpose);
+            this._nextErrandCheckUtc = DateTime.UtcNow + ErrandRetryDelay;
+            return false;
+        }
+
+        var npcPosition = new Point((byte)((spawn.X1 + spawn.X2) / 2), (byte)((spawn.Y1 + spawn.Y2) / 2));
+        if (map.Definition.Number != errand.MapNumber)
+        {
+            if (this._timeProvider.GetUtcNow() - this._lastWarpUtc >= FollowWarpCooldown
+                && await this._player.GameContext.GetMapAsync((ushort)errand.MapNumber).ConfigureAwait(false) is { } errandMap
+                && this.FindBestReachableLegalWarp(errandMap, npcPosition, cancellationToken) is { Gate: { } gate } warp
+                && this.CanAffordWarp(warp))
+            {
+                this._player.Logger.LogDebug("Bot '{Name}' travels to {Map} for its errand '{Purpose}'.", this._player.Name, errandMap.Definition.Name, errand.Purpose);
+                await this.WarpAsync(warp, gate, errandMap.Definition, 0, this.GetBotLevel()).ConfigureAwait(false);
+                this.Report(BotActivity.Errand, errandMap.Definition.Name.ValueInNeutralLanguage);
+                return true;
+            }
+
+            this._player.Logger.LogDebug("Bot '{Name}' cannot travel to map {Map} for its errand '{Purpose}' now.", this._player.Name, errand.MapNumber, errand.Purpose);
+            this._nextErrandCheckUtc = DateTime.UtcNow + ErrandRetryDelay;
+            return false;
+        }
+
+        if (this._player.GetDistanceTo(npcPosition) > MerchantTalkRange)
+        {
+            // NPCs stand in town: from the field (or another floor) into town first, like a town portal.
+            if (!inSafezone && map.Definition.ExitGates.Where(g => g.IsSpawnGate).SelectRandom() is { } townGate)
+            {
+                this._travelPath = null;
+                this._hasDestination = false;
+                await this._player.WarpToAsync(townGate).ConfigureAwait(false);
+                this.Report(BotActivity.Errand, map.Definition.Name.ValueInNeutralLanguage);
+                return true;
+            }
+
+            this.Report(BotActivity.Errand, map.Definition.Name.ValueInNeutralLanguage);
+            if (!await this.TravelTowardAsync(map, npcPosition, cancellationToken).ConfigureAwait(false))
+            {
+                this._player.Logger.LogDebug("Bot '{Name}' finds no way to the NPC of its errand '{Purpose}' at {Target}.", this._player.Name, errand.Purpose, npcPosition);
+                this._nextErrandCheckUtc = DateTime.UtcNow + ErrandRetryDelay;
+            }
+
+            this._lastMoveUtc = DateTime.UtcNow;
+            return true;
+        }
+
+        // The dialog runs in the MU Helper tick, where every bot mutation runs (see PendingBotActions).
+        this._player.PendingBotActions.Enqueue(() => this.RunErrandAsync(map, npcPosition, errand));
+        this._nextErrandCheckUtc = DateTime.UtcNow + ErrandSettleDelay;
+        this._lastMoveUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
+    /// The errand at the NPC, inside the MU Helper tick: open its dialog like a player, act, close.
+    /// </summary>
+    private async ValueTask RunErrandAsync(GameMap map, Point npcPosition, BotErrand errand)
+    {
+        var npc = map.GetNpcsInRange(npcPosition, 4).FirstOrDefault(n => n.Definition.Number == errand.NpcNumber);
+        if (npc is null)
+        {
+            this._player.Logger.LogDebug("Bot '{Name}' finds the NPC of its errand '{Purpose}' gone.", this._player.Name, errand.Purpose);
+            return;
+        }
+
+        await new TalkNpcAction().TalkToNpcAsync(this._player, npc).ConfigureAwait(false);
+        if (!ReferenceEquals(this._player.OpenedNpc, npc))
+        {
+            this._player.Logger.LogDebug("Bot '{Name}' could not open the dialog of '{Npc}' for its errand '{Purpose}'.", this._player.Name, npc.Definition.Designation, errand.Purpose);
+            return;
+        }
+
+        try
+        {
+            await errand.ActAsync(this._player, npc).ConfigureAwait(false);
+        }
+        finally
+        {
+            await new CloseNpcDialogAction().CloseNpcDialogAsync(this._player).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

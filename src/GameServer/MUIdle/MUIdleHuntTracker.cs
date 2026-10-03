@@ -41,6 +41,9 @@ internal enum HuntActivityKind
 
     /// <summary>In an event (Blood Castle, Devil Square, Chaos Castle).</summary>
     Event,
+
+    /// <summary>On the way to a quest giver, or at it (accepting or handing in a quest).</summary>
+    Quest,
 }
 
 /// <summary>
@@ -74,6 +77,7 @@ internal static class MUIdleHuntTracker
         BotActivity.Warping => HuntActivityKind.Warping,
         BotActivity.Shopping => HuntActivityKind.Shopping,
         BotActivity.Buff => HuntActivityKind.Buff,
+        BotActivity.Errand => HuntActivityKind.Quest,
         _ => HuntActivityKind.Hunting,
     };
 
@@ -277,6 +281,7 @@ internal static class MUIdleHuntTracker
         HuntActivityKind.Buff => "buff",
         HuntActivityKind.Dead => "dead",
         HuntActivityKind.Event => "event",
+        HuntActivityKind.Quest => "quest",
         _ => "idle",
     };
 

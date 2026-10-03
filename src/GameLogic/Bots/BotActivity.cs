@@ -21,4 +21,7 @@ public enum BotActivity
 
     /// <summary>On a trip to the buff NPC.</summary>
     Buff,
+
+    /// <summary>On an errand at an NPC (see <see cref="BotErrand"/>), e.g. at a quest giver.</summary>
+    Errand,
 }

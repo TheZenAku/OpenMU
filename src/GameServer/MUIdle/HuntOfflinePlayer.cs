@@ -185,6 +185,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         BetterProvenMap = this.Settings.AutoMapSelection ? this.Statistics.BetterProvenMap : null,
         Rally = this.Settings.BossesFirst ? this.WorldBossRally : null,
         PreferredMonsterLevels = this.Settings is { AutoMapSelection: true, QuestItemsFirst: true } ? () => MUIdleQuests.MissingItemBand(this) : null,
+        Errand = this.Settings.QuestsAuto ? () => MUIdleQuests.ErrandFor(this) : null,
         SellJunk = this.Settings.AutoSell,
         BuyPotions = this.Settings.AutoBuyPotions,
         RepairAtMerchant = this.Settings.AutoRepair,

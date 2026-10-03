@@ -31,7 +31,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// defense changes with its buffs, and a small margin let two maps leapfrog each other on every
     /// re-evaluation - the bot ping-ponged between them on warp cooldown.
     /// </summary>
-    private const int WarpImprovementMargin = 8;
+    private const int WarpImprovementMargin = HuntingMapRating.ImprovementMargin;
 
     /// <summary>Fallback when the server defines no warps: the lowest stock requirement.</summary>
     private const int FallbackMinWarpLevel = 10;
@@ -624,7 +624,7 @@ internal sealed class BotNavigator : AsyncDisposable
     }
 
     private static int GetMonsterLevel(MonsterDefinition definition)
-        => (int)(definition.Attributes.FirstOrDefault(a => a.AttributeDefinition == Stats.Level)?.Value ?? 0f);
+        => HuntingMapRating.GetMonsterLevel(definition);
 
     /// <summary>Manhattan distance between the center of the spawn area and the given point.</summary>
     /// <summary>
@@ -2254,17 +2254,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// not the safe choice for a mastered bot, it is a dead end - so the map and hunting ground choice
     /// look above the floor first. 0 for every other bot, which hunts by safety alone.
     /// </summary>
-    private int MasterExperienceFloor()
-    {
-        var configuration = this._player.GameContext.Configuration;
-        if (this._player.SelectedCharacter?.CharacterClass?.IsMasterClass != true
-            || (this._player.Attributes?[Stats.Level] ?? 0) < configuration.MaximumLevel)
-        {
-            return 0;
-        }
-
-        return configuration.MinimumMonsterLevelForMasterExperience;
-    }
+    private int MasterExperienceFloor() => HuntingMapRating.MasterExperienceFloor(this._player);
 
     /// <summary>
     /// The level of the strongest monster on the map which this bot can safely fight (judged by the
@@ -2277,24 +2267,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <param name="mapDefinition">The map to judge.</param>
     /// <param name="minimumLevel">The lowest monster level worth counting.</param>
     private int BestSafeLevel(GameMapDefinition mapDefinition, int minimumLevel = 0)
-    {
-        var best = 0;
-        foreach (var area in mapDefinition.MonsterSpawns)
-        {
-            if (!this.IsPermanentMonsterSpawn(area))
-            {
-                continue;
-            }
-
-            var level = GetMonsterLevel(area.MonsterDefinition!);
-            if (level >= minimumLevel && level > best && CombatHandler.IsSafeTarget(this._player, area.MonsterDefinition!))
-            {
-                best = level;
-            }
-        }
-
-        return best;
-    }
+        => HuntingMapRating.BestSafeLevel(this._player, mapDefinition, minimumLevel);
 
     /// <summary>
     /// Whether the spawn area holds monsters which actually stand on the map at all times. The event
@@ -2304,10 +2277,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// it can find there. Same class of mistake as walking to a merchant that is only spawned now and
     /// then, see <see cref="BotShoppingHandler.FindMerchantPosition"/>.
     /// </summary>
-    private bool IsPermanentMonsterSpawn(MonsterSpawnArea area)
-    {
-        return area is { Quantity: > 0, SpawnTrigger: SpawnTrigger.Automatic, MonsterDefinition.ObjectKind: NpcObjectKind.Monster };
-    }
+    private bool IsPermanentMonsterSpawn(MonsterSpawnArea area) => HuntingMapRating.IsPermanentMonsterSpawn(area);
 
     /// <summary>
     /// Picks the legally warpable map with the strongest monsters the bot can safely fight among those

@@ -32,6 +32,12 @@ public class MUIdleConfiguration
     public bool RestoreOfflineHuntersOnStartup { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets how often (minutes) HUNT on AUTO moves a player with a client to a clearly better map. 0 = never.
+    /// </summary>
+    [Display(Name = "Online AUTO map change (minutes)", Description = "How often HUNT with the hunting map on AUTO checks for a clearly better map for a player with a client, and moves there; 0 = never (offline hunters always choose).")]
+    public int OnlineAutoMapMinutes { get; set; } = 10;
+
+    /// <summary>
     /// Gets or sets the maximum duration of an offline hunting session in minutes. 0 means unlimited.
     /// </summary>
     [Display(Name = "Maximum offline minutes", Description = "Maximum duration of an offline hunting session in minutes; 0 = unlimited.")]

@@ -68,6 +68,7 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
             await MUIdleCatchUp.ApplyAsync(gameContext, configuration).ConfigureAwait(false);
             await MUIdleEvents.EnrolAsync(gameContext).ConfigureAwait(false);
             await MUIdleEvents.RallyAsync(gameContext).ConfigureAwait(false);
+            await MUIdleOnlineAutoMap.MaintainAsync(gameContext, configuration).ConfigureAwait(false);
             await MUIdleContracts.TickAsync(gameContext, 0.25).ConfigureAwait(false);
         }
         finally

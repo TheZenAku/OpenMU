@@ -96,7 +96,7 @@ internal static class MUIdleOnlineQuests
         {
             if (MUIdleHuntMaps.ReachingWarp(player, giverMap, spot) is not { } warp)
             {
-                logger.LogDebug("MUIdle quest {Character}: no warp of its own to the giver on {Map} now.", player.Name, giverMap.Definition.Name);
+                logger.LogInformation("MUIdle quest {Character}: no warp of its own to the giver on {Map} now.", player.Name, giverMap.Definition.Name);
                 box.Value = DateTime.UtcNow.AddMinutes(5);
                 return;
             }

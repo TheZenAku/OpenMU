@@ -243,14 +243,18 @@ internal static class MUIdleQuests
 
         var active = state?.ActiveQuest is { } running && Equals(running, quest);
         var giver = givers.FirstOrDefault(m => m.Quests.Contains(quest));
-        // A giver may stand in several towns (Marlon): the one on the character's map, like a player picks.
+        // A giver may stand in several places (Marlon in four towns, Priest Devin in Devias and Crywolf):
+        // like a player picks, the one on the character's map, else one it can warp to (Crywolf has no
+        // warp entry), else any.
         var stands = giver is null
             ? []
             : configuration.Maps
                 .SelectMany(map => map.MonsterSpawns.Select(spawn => (Map: (GameMapDefinition?)map, Spawn: (MonsterSpawnArea?)spawn)))
                 .Where(x => x.Spawn!.MonsterDefinition == giver)
                 .ToList();
-        var stand = stands.FirstOrDefault(x => x.Map == player.CurrentMap?.Definition) is { Map: not null } here ? here : stands.FirstOrDefault();
+        var stand = stands.FirstOrDefault(x => x.Map == player.CurrentMap?.Definition) is { Map: not null } here ? here
+            : stands.FirstOrDefault(x => MUIdleHuntMaps.Evaluate(player, x.Map!.Number) is { Refusal: null }) is { Map: not null } reachable ? reachable
+            : stands.FirstOrDefault();
         return new LineState(quest, state, active, giver, stand);
     }
 

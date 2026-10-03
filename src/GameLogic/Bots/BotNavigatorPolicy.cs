@@ -4,6 +4,8 @@
 
 namespace MUnique.OpenMU.GameLogic.Bots;
 
+using MUnique.OpenMU.Pathfinding;
+
 /// <summary>
 /// What a <see cref="BotNavigator"/> (and the <see cref="BotShoppingHandler"/> it drives) may do for
 /// the character it navigates. Bots get <see cref="Bot"/>, which is everything; the offline session
@@ -96,6 +98,12 @@ public sealed record BotNavigatorPolicy
     /// (measured, not guessed); the bot returns there when a player could. <c>null</c>: no such judge.
     /// </summary>
     public Func<string?, string?>? BetterProvenMap { get; init; }
+
+    /// <summary>
+    /// Gets a rally point (map number and spot, e.g. a live world boss) the bot goes to - on a
+    /// player's terms - and stays at while it is given; <c>null</c> when there is none.
+    /// </summary>
+    public Func<(int Map, Point Spot)?>? Rally { get; init; }
 
     /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.

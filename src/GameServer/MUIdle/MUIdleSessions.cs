@@ -226,13 +226,13 @@ internal static class MUIdleSessions
     public static async ValueTask OnMapEnteredAsync(RemotePlayer player)
     {
         // Sent to the pinned map by HUNT: the client walks to a hunting ground there, then resumes HUNT.
-        if (MUIdleHuntTracker.TryTakePinnedArrival(player)
+        if (MUIdleHuntTracker.TryTakePinnedArrival(player, out var spot)
             && player.SelectedCharacter is { } character
             && player.CurrentMap is { } map)
         {
             MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
             var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
-            await SendStateAsync(player, state, resume: true, ground: MUIdleHuntMaps.PickGround(player, map)).ConfigureAwait(false);
+            await SendStateAsync(player, state, resume: true, ground: spot ?? MUIdleHuntMaps.PickGround(player, map)).ConfigureAwait(false);
             return;
         }
 

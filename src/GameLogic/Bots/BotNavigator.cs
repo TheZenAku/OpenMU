@@ -1492,6 +1492,29 @@ internal sealed class BotNavigator : AsyncDisposable
         // ground to earn its way back up, instead of walking between hunting grounds forever.
         var mapIsBarren = DateTime.UtcNow - this._player.LastAttackUtc > BarrenMapDuration;
 
+        // A rally point (a live world boss): its map on a player's terms, and stay - unless that map
+        // turned hostile, then the regular escape below applies.
+        if (this._policy.Rally?.Invoke() is { } rally
+            && this._player.GameContext.Configuration.Maps.FirstOrDefault(m => m.Number == rally.Map) is { } rallyMap)
+        {
+            if (currentMap?.Number == rally.Map)
+            {
+                if (!mustEscape)
+                {
+                    return false;
+                }
+            }
+            else if (this._timeProvider.GetUtcNow() - this._lastWarpUtc >= WarpCooldown
+                     && !rallyMap.TryGetRequirementError(this._player, out _)
+                     && this.TryGetLegalWarp(rallyMap, out var rallyWarp)
+                     && this.CanAffordWarp(rallyWarp)
+                     && rallyWarp.Gate is { } rallyGate)
+            {
+                this._player.Logger.LogDebug("Bot {Character} goes to the rally point on map {Map}.", this._player.Name, rallyMap.Name);
+                return await this.WarpAsync(rallyWarp, rallyGate, rallyMap, this.BestSafeLevel(rallyMap), botLevel).ConfigureAwait(false);
+            }
+        }
+
         // A map the player chose: go there whenever the game would let a player go there, and stay.
         // Out of reach for now (level, fare, entry requirement), the regular choice below keeps the
         // character earning meanwhile, and the next check tries again.
@@ -2396,6 +2419,13 @@ internal sealed class BotNavigator : AsyncDisposable
     {
         ground = default;
         groundLevel = 0;
+
+        // On the rally map the ground is the rally spot, wherever it moved to.
+        if (this._policy.Rally?.Invoke() is { } rally && rally.Map == map.Definition.Number)
+        {
+            ground = rally.Spot;
+            return true;
+        }
 
         var candidates = map.Definition.MonsterSpawns
             .Where(this.IsPermanentMonsterSpawn)

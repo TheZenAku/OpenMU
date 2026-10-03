@@ -11,6 +11,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Bots;
 using MUnique.OpenMU.GameServer.RemoteView;
+using MUnique.OpenMU.Pathfinding;
 
 /// <summary>
 /// What the hunt of a character is doing.
@@ -133,12 +134,14 @@ internal static class MUIdleHuntTracker
     /// </summary>
     /// <param name="player">The player.</param>
     /// <param name="mapNumber">The pinned map.</param>
-    public static void ExpectPinnedArrival(Player player, int mapNumber)
+    /// <param name="ground">Where to walk on arrival; a hunting ground of the map when <c>null</c>.</param>
+    public static void ExpectPinnedArrival(Player player, int mapNumber, Point? ground = null)
     {
         var entry = Entries.GetValue(player, _ => new Entry());
         lock (entry)
         {
             entry.ArrivalMap = mapNumber;
+            entry.ArrivalGround = ground;
             entry.ArrivalExpectedUtc = DateTime.UtcNow;
         }
     }
@@ -147,12 +150,14 @@ internal static class MUIdleHuntTracker
     /// Whether the player just entered the pinned map it was sent to (and forgets the trip).
     /// </summary>
     /// <param name="player">The player.</param>
+    /// <param name="ground">Where to walk, when the trip named a spot.</param>
     /// <returns><c>true</c> when the trip ended on the pinned map.</returns>
-    public static bool TryTakePinnedArrival(Player player)
+    public static bool TryTakePinnedArrival(Player player, out Point? ground)
     {
         var entry = Entries.GetValue(player, _ => new Entry());
         lock (entry)
         {
+            ground = entry.ArrivalGround;
             if (entry.ArrivalMap is not { } map)
             {
                 return false;
@@ -311,6 +316,8 @@ internal static class MUIdleHuntTracker
         public MUIdleSettings? Settings { get; set; }
 
         public int? ArrivalMap { get; set; }
+
+        public Point? ArrivalGround { get; set; }
 
         public DateTime ArrivalExpectedUtc { get; set; }
 

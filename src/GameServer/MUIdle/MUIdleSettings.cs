@@ -84,6 +84,12 @@ public sealed class MUIdleSettings
     public List<string> EventOptOut { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets a value indicating whether HUNT goes to a live world boss of the character's level
+    /// (<see cref="MUIdleWorldBossPlugIn"/>).
+    /// </summary>
+    public bool BossesFirst { get; set; } = true;
+
+    /// <summary>
     /// Parses the settings from JSON; returns the defaults for null or invalid JSON.
     /// </summary>
     /// <param name="json">The JSON.</param>

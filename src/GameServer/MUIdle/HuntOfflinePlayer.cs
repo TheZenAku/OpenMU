@@ -11,6 +11,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Bots;
 using MUnique.OpenMU.GameLogic.Offline;
+using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.GameLogic.Views.Character;
 using MUnique.OpenMU.GameLogic.Views.Inventory;
@@ -69,6 +70,15 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
 
     /// <inheritdoc />
     public override bool RespawnAndContinue => this.Settings.AutoTravel && this.Settings.KeepHuntingAfterDeath;
+
+    /// <summary>
+    /// Gets where a live world boss of this character's level is, if any (the navigator's rally point).
+    /// </summary>
+    /// <returns>The boss map and position.</returns>
+    internal (int Map, Point Spot)? WorldBossRally()
+        => MUIdleWorldBossPlugIn.LiveBossFor(this.GameContext, this.Level) is { } boss
+            ? (boss.Definition.MapNumber, boss.Monster.Position)
+            : null;
 
     /// <summary>
     /// Gets the name of the current map, as the statistics record it.
@@ -165,6 +175,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         PinnedMap = this.Settings.AutoMapSelection ? null : this.Settings.PreferredMap,
         ActivityChanged = (activity, map) => MUIdleHuntTracker.Report(this, MUIdleHuntTracker.FromBot(activity), map),
         BetterProvenMap = this.Settings.AutoMapSelection ? this.Statistics.BetterProvenMap : null,
+        Rally = this.Settings.BossesFirst ? this.WorldBossRally : null,
         SellJunk = this.Settings.AutoSell,
         BuyPotions = this.Settings.AutoBuyPotions,
         RepairAtMerchant = this.Settings.AutoRepair,

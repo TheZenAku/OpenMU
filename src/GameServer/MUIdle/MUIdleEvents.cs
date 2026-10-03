@@ -11,6 +11,7 @@ using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Offline;
+using MUnique.OpenMU.GameLogic.PlayerActions;
 using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.PlugIns.PeriodicTasks;
 using MUnique.OpenMU.GameServer.RemoteView;
@@ -52,6 +53,10 @@ internal static class MUIdleEvents
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(15);
 
     private static readonly EnterMiniGameAction EnterAction = new();
+
+    private static readonly WarpAction WarpAction = new();
+
+    private static readonly ConditionalWeakTable<Player, HashSet<object>> Rallied = new();
 
     private static readonly ConditionalWeakTable<Player, ConcurrentDictionary<MiniGameType, DateTime>> Attempts = new();
 
@@ -157,6 +162,70 @@ internal static class MUIdleEvents
                 player.Logger.LogWarning(ex, "MUIdle: event entry of {Player} failed.", player);
             }
         }
+    }
+
+    /// <summary>
+    /// Sends players with a client and HUNT on to a live world boss of their level, once per boss:
+    /// a warp on a player's terms when it is elsewhere, then a walk to the boss (the offline hunters
+    /// go there through their navigator's rally point).
+    /// </summary>
+    /// <param name="gameContext">The game context.</param>
+    public static async ValueTask RallyAsync(IGameContext gameContext)
+    {
+        foreach (var player in (await gameContext.GetPlayersAsync().ConfigureAwait(false)).OfType<RemotePlayer>())
+        {
+            try
+            {
+                await TryRallyAsync(player).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                player.Logger.LogWarning(ex, "MUIdle: world boss rally of {Player} failed.", player);
+            }
+        }
+    }
+
+    private static async ValueTask TryRallyAsync(RemotePlayer player)
+    {
+        if (!IsHunting(player)
+            || player.CurrentMiniGame is not null
+            || !player.IsAlive
+            || player.PlayerState.CurrentState != PlayerState.EnteredWorld
+            || player.SelectedCharacter is not { } character
+            || MUIdleHuntTracker.GetSettings(player) is not { BossesFirst: true }
+            || MUIdleWorldBossPlugIn.LiveBossFor(player.GameContext, player.Level) is not { } boss
+            || !Rallied.GetValue(player, _ => new HashSet<object>()).Add(boss.Monster))
+        {
+            return;
+        }
+
+        var spot = boss.Monster.Position;
+        var name = boss.Definition.Name;
+        if (player.CurrentMap?.Definition.Number == boss.Definition.MapNumber)
+        {
+            if (player.Position.EuclideanDistanceTo(spot) > 15)
+            {
+                MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
+                var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+                await MUIdleSessions.SendStateAsync(player, state, resume: true, ground: spot).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        if (MUIdleHuntMaps.Evaluate(player, boss.Definition.MapNumber) is not { Warp: { } warp } target)
+        {
+            return;
+        }
+
+        player.GameContext.LoggerFactory.CreateLogger(LogCategory).LogDebug("MUIdle hunt {Character}: going to the world boss {Boss} on {Map}.", player.Name, name, target.Map.Name);
+        MUIdleHuntTracker.Report(player, HuntActivityKind.Warping, target.Map.Name.ValueInNeutralLanguage);
+        MUIdleHuntTracker.ExpectPinnedArrival(player, boss.Definition.MapNumber, spot);
+        await player.RunPersistenceExclusiveAsync(async () =>
+        {
+            await WarpAction.WarpToAsync(player, warp).ConfigureAwait(false);
+            return true;
+        }).ConfigureAwait(false);
     }
 
     private static bool IsHunting(Player player)

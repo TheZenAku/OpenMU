@@ -7,6 +7,7 @@ namespace MUnique.OpenMU.GameLogic.Marketplace;
 using System.Collections;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel;
 using MUnique.OpenMU.DataModel.Configuration;
@@ -35,6 +36,14 @@ public class MarketplaceEscrowAction
     private static readonly PropertyInfo? StorageIdProperty = FindStorageIdProperty();
 
     /// <summary>
+    /// One escrow move at a time, for every player and game server of this process. Two live
+    /// tokens can name the same box (a buyer's claim released while their packet was still on
+    /// its way, then the next buyer's), and both must not find the item there: the second one
+    /// has to read the box after the first one saved.
+    /// </summary>
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+
+    /// <summary>
     /// Runs the operation the token names, after checking the token against the player.
     /// </summary>
     /// <param name="player">The player who sent the token.</param>
@@ -56,6 +65,7 @@ public class MarketplaceEscrowAction
         }
 
         EscrowResult result;
+        await Gate.WaitAsync().ConfigureAwait(false);
         try
         {
             result = token.Operation switch
@@ -71,6 +81,10 @@ public class MarketplaceEscrowAction
         {
             player.Logger.LogError(ex, "Marketplace escrow {Operation} failed for {Player}, listing {ListingId}", token.Operation, player, token.ListingId);
             result = new EscrowResult(token.Operation, EscrowStatus.Failed, token.ListingId, token.BoxId, null, 0);
+        }
+        finally
+        {
+            Gate.Release();
         }
 
         await this.AnswerAsync(player, result).ConfigureAwait(false);

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.NPC;
+using MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.GameLogic.Views.Inventory;
@@ -159,8 +160,10 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
     }
 
     /// <summary>
-    /// Gets a live boss the player's character should go to, if any (for HUNT): of its level, and a QA
-    /// boss only for a QA account.
+    /// Gets a live boss the player's character should go to, if any (for HUNT): of its level, one it
+    /// could actually fight (the opt-in boss rule of <see cref="CombatHandler.ExplainUnsafe"/>), and a
+    /// QA boss only for a QA account. A boss which would fell the character in a few hits is no rally
+    /// point: test300Dw (360 health) went to the Dark Phoenix (492 a hit) and died every three minutes.
     /// </summary>
     /// <param name="player">The player.</param>
     /// <returns>The live boss monster and its definition.</returns>
@@ -170,6 +173,7 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         var qa = IsQaAccount(player);
         var fight = Fights.Values
             .Where(f => f.GameContext == player.GameContext && f.Monster.IsAlive && level >= f.Definition.MinimumLevel && (!f.IsQa || qa))
+            .Where(f => CombatHandler.ExplainUnsafe(player, f.Monster.Definition, requireQuickKill: false) is null)
             .OrderByDescending(f => f.IsQa)
             .ThenByDescending(f => f.Definition.MinimumLevel)
             .FirstOrDefault();
@@ -626,7 +630,8 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
                 fight.Damage.Count);
             foreach (var player in await gameContext.GetPlayersAsync().ConfigureAwait(false))
             {
-                if (!IsQaAccount(player) || player.SelectedCharacter?.Name is not { } name || LiveBossFor(player) is not { } live || !ReferenceEquals(live.Monster, boss))
+                // Every QA character in the game: a refused one shows why (the safety verdict below).
+                if (!IsQaAccount(player) || player.SelectedCharacter?.Name is not { } name)
                 {
                     continue;
                 }

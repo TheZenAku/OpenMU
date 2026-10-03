@@ -92,6 +92,12 @@ public sealed record BotNavigatorPolicy
     public Action<BotActivity, string?>? ActivityChanged { get; init; }
 
     /// <summary>
+    /// Gets a judge which, given the current map's name, names a map that has earned clearly more
+    /// (measured, not guessed); the bot returns there when a player could. <c>null</c>: no such judge.
+    /// </summary>
+    public Func<string?, string?>? BetterProvenMap { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

@@ -1515,6 +1515,22 @@ internal sealed class BotNavigator : AsyncDisposable
             }
         }
 
+        // A map that has earned clearly more than this one, by the policy's measure: back there.
+        if (this._policy.PinnedMap is null
+            && this._timeProvider.GetUtcNow() - this._lastWarpUtc >= WarpCooldown
+            && this._policy.BetterProvenMap?.Invoke(currentMap?.Name.ValueInNeutralLanguage) is { } provenName
+            && this._player.GameContext.Configuration.Maps.FirstOrDefault(m => m.Name.ValueInNeutralLanguage == provenName) is { } proven
+            && proven.Number != currentMap?.Number
+            && this.BestSafeLevel(proven) > 0
+            && !proven.TryGetRequirementError(this._player, out _)
+            && this.TryGetLegalWarp(proven, out var provenWarp)
+            && this.CanAffordWarp(provenWarp)
+            && provenWarp.Gate is { } provenGate)
+        {
+            this._player.Logger.LogDebug("Bot {Character} returns to map {Map}: it has earned more there.", this._player.Name, proven.Name);
+            return await this.WarpAsync(provenWarp, provenGate, proven, this.BestSafeLevel(proven), botLevel).ConfigureAwait(false);
+        }
+
         if ((plainLevel < this.GetMinWarpLevel() && !mustEscape && !mapIsBarren)
             || this._timeProvider.GetUtcNow() - this._lastWarpUtc < WarpCooldown)
         {

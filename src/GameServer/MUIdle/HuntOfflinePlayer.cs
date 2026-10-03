@@ -45,6 +45,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         this._deathHandler = (_, _) =>
         {
             this.Statistics.AddDeath();
+            this.Statistics.Record(this.CurrentMapName, deaths: 1);
             MUIdleHuntTracker.Report(this, HuntActivityKind.Dead);
         };
         this.Died += this._deathHandler;
@@ -68,6 +69,11 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
 
     /// <inheritdoc />
     public override bool RespawnAndContinue => this.Settings.AutoTravel && this.Settings.KeepHuntingAfterDeath;
+
+    /// <summary>
+    /// Gets the name of the current map, as the statistics record it.
+    /// </summary>
+    internal string? CurrentMapName => this.CurrentMap?.Definition.Name.ValueInNeutralLanguage;
 
     /// <summary>
     /// Gets the current master level.
@@ -103,6 +109,10 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         var current = (long)this.Money;
         var previous = Interlocked.Exchange(ref this._lastMoney, current);
         this.Statistics.AddZenDelta(current - previous);
+        if (current > previous)
+        {
+            this.Statistics.Record(this.CurrentMapName, zen: current - previous);
+        }
     }
 
     /// <inheritdoc />
@@ -154,6 +164,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         WarpBetweenMaps = this.Settings.AutoMapSelection || this.Settings.PreferredMap is not null,
         PinnedMap = this.Settings.AutoMapSelection ? null : this.Settings.PreferredMap,
         ActivityChanged = (activity, map) => MUIdleHuntTracker.Report(this, MUIdleHuntTracker.FromBot(activity), map),
+        BetterProvenMap = this.Settings.AutoMapSelection ? this.Statistics.BetterProvenMap : null,
         SellJunk = this.Settings.AutoSell,
         BuyPotions = this.Settings.AutoBuyPotions,
         RepairAtMerchant = this.Settings.AutoRepair,
@@ -207,6 +218,11 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
             {
                 this._player.Statistics.AddKill();
                 MUIdleHuntTracker.Report(this._player, HuntActivityKind.Hunting);
+            }
+
+            if (gainedExperience > 0 || killedObject is not null)
+            {
+                this._player.Statistics.Record(this._player.CurrentMapName, experience: Math.Max(0, gainedExperience), kills: killedObject is null ? 0 : 1);
             }
 
             return ValueTask.CompletedTask;

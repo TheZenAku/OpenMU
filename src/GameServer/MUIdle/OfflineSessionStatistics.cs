@@ -16,6 +16,19 @@ public sealed class OfflineSessionStatistics
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    /// <summary>The longest stretch between two records which counts as time on a map, in minutes.</summary>
+    private const double MaxGapMinutes = 2;
+
+    /// <summary>The minutes a map must have been measured for before it is compared.</summary>
+    private const double MinSampleMinutes = 10;
+
+    /// <summary>How much better (experience per minute) a proven map must be to move there.</summary>
+    private const double ProvenMargin = 1.25;
+
+    private string? _clockMap;
+
+    private DateTime _clockUtc;
+
     private long _monstersKilled;
     private long _experience;
     private long _masterExperience;
@@ -117,7 +130,10 @@ public sealed class OfflineSessionStatistics
     {
         lock (this.MapsVisited)
         {
-            return JsonSerializer.Serialize(this, JsonOptions);
+            lock (this.MapRates)
+            {
+                return JsonSerializer.Serialize(this, JsonOptions);
+            }
         }
     }
 
@@ -180,4 +196,112 @@ public sealed class OfflineSessionStatistics
             }
         }
     }
+
+    /// <summary>
+    /// Gets or sets what each map earned in this session: the summary's breakdown, and what the map
+    /// choice measures maps by (<see cref="BetterProvenMap"/>).
+    /// </summary>
+    public List<MapRate> MapRates { get; set; } = [];
+
+    /// <summary>
+    /// Counts the time since the last record towards the map the character was on, then adds what it
+    /// just earned on <paramref name="map"/>. A gap longer than <see cref="MaxGapMinutes"/> (a pause, a
+    /// restart) counts as that much.
+    /// </summary>
+    /// <param name="map">The map the character is on now.</param>
+    /// <param name="experience">Experience (normal and master) just earned.</param>
+    /// <param name="zen">Zen just earned.</param>
+    /// <param name="kills">Kills just made.</param>
+    /// <param name="deaths">Deaths just suffered.</param>
+    /// <param name="at">The time of the record; now when <c>null</c> (tests pass their own).</param>
+    public void Record(string? map, long experience = 0, long zen = 0, long kills = 0, long deaths = 0, DateTime? at = null)
+    {
+        lock (this.MapRates)
+        {
+            var now = at ?? DateTime.UtcNow;
+            if (this._clockMap is { } previous)
+            {
+                this.RateOf(previous).Minutes += Math.Min((now - this._clockUtc).TotalMinutes, MaxGapMinutes);
+            }
+
+            this._clockMap = map;
+            this._clockUtc = now;
+            if (map is null)
+            {
+                return;
+            }
+
+            var rate = this.RateOf(map);
+            rate.Experience += experience;
+            rate.Zen += zen;
+            rate.Kills += kills;
+            rate.Deaths += deaths;
+        }
+    }
+
+    /// <summary>
+    /// Gets the visited map which has proven clearly better than the current one: experience per
+    /// minute at least <see cref="ProvenMargin"/> times the current map's, both measured over at least
+    /// <see cref="MinSampleMinutes"/>. The margin keeps the hunt from bouncing between two similar maps.
+    /// </summary>
+    /// <param name="currentMap">The map the character is on.</param>
+    /// <returns>The better map's name, or <c>null</c>.</returns>
+    public string? BetterProvenMap(string? currentMap)
+    {
+        lock (this.MapRates)
+        {
+            var current = this.MapRates.FirstOrDefault(r => r.Map == currentMap);
+            if (current is null || current.Minutes < MinSampleMinutes)
+            {
+                return null;
+            }
+
+            var best = this.MapRates
+                .Where(r => r.Map != currentMap && r.Minutes >= MinSampleMinutes)
+                .MaxBy(r => r.ExperiencePerMinute);
+            return best is not null && best.ExperiencePerMinute >= current.ExperiencePerMinute * ProvenMargin
+                ? best.Map
+                : null;
+        }
+    }
+
+    private MapRate RateOf(string map)
+    {
+        var rate = this.MapRates.FirstOrDefault(r => r.Map == map);
+        if (rate is null)
+        {
+            rate = new MapRate { Map = map };
+            this.MapRates.Add(rate);
+        }
+
+        return rate;
+    }
+}
+
+/// <summary>
+/// What one map earned during an offline session.
+/// </summary>
+public sealed class MapRate
+{
+    /// <summary>Gets or sets the map name.</summary>
+    public string Map { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the minutes spent there.</summary>
+    public double Minutes { get; set; }
+
+    /// <summary>Gets or sets the experience (normal and master) earned there.</summary>
+    public long Experience { get; set; }
+
+    /// <summary>Gets or sets the zen earned there (pickups and sales; spending is not subtracted).</summary>
+    public long Zen { get; set; }
+
+    /// <summary>Gets or sets the kills made there.</summary>
+    public long Kills { get; set; }
+
+    /// <summary>Gets or sets the deaths suffered there.</summary>
+    public long Deaths { get; set; }
+
+    /// <summary>Gets the experience per minute.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double ExperiencePerMinute => this.Minutes > 0 ? this.Experience / this.Minutes : 0;
 }

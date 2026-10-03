@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
+using MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameLogic.PlayerActions.Character;
 using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameServer.RemoteView;
@@ -57,12 +58,18 @@ internal static class MUIdleAutoBuild
         var shares = weights.Select(w => (w.Stat, Amount: points * w.Weight / totalWeight)).ToArray();
         shares[0].Amount += points - shares.Sum(s => s.Amount);
 
+        // A client hears of an increase by the stat-increase response, which says "one more point".
+        // For several points at once upstream re-sends the whole character and warps the player onto
+        // its own position (a workaround for old clients): on every level up of a hunting character
+        // that was 3-4 warps, walk resyncs, and a crash when the next share hit a player mid-warp.
+        // Offline hunters have no client to tell, so they keep the bulk step.
+        var bulk = player is OfflinePlayer;
         foreach (var (stat, amount) in shares)
         {
             var left = amount;
             while (left > 0 && character.LevelUpPoints > 0)
             {
-                var step = (ushort)Math.Min(left, Math.Min(character.LevelUpPoints, ushort.MaxValue));
+                var step = bulk ? (ushort)Math.Min(left, Math.Min(character.LevelUpPoints, ushort.MaxValue)) : (ushort)1;
                 var before = character.LevelUpPoints;
                 await IncreaseAction.IncreaseStatsAsync(player, stat, step).ConfigureAwait(false);
                 if (character.LevelUpPoints >= before)

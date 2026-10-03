@@ -102,8 +102,9 @@ internal static class MUIdleOnlineAutoMap
             return;
         }
 
-        // A live world boss of the character's level: the rally decides where it goes.
-        if (settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(player) is not null)
+        // A live world boss of the character's level: the rally decides where it goes. A quest errand
+        // (accept or hand in at the giver) comes before the map choice too (D19).
+        if ((settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(player) is not null) || MUIdleOnlineQuests.Due(player) is not null)
         {
             return;
         }

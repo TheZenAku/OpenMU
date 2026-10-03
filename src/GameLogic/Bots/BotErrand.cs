@@ -5,7 +5,6 @@
 namespace MUnique.OpenMU.GameLogic.Bots;
 
 using MUnique.OpenMU.GameLogic.NPC;
-using MUnique.OpenMU.GameLogic.Offline;
 
 /// <summary>
 /// An errand at an NPC which the navigator runs on a player's terms (e.g. a quest at its giver): it
@@ -17,4 +16,4 @@ using MUnique.OpenMU.GameLogic.Offline;
 /// <param name="NpcNumber">The monster definition number of the NPC.</param>
 /// <param name="Purpose">What the errand is for (logs).</param>
 /// <param name="ActAsync">What to do while the NPC's dialog is open.</param>
-public sealed record BotErrand(short MapNumber, short NpcNumber, string Purpose, Func<OfflinePlayer, NonPlayerCharacter, ValueTask> ActAsync);
+public sealed record BotErrand(short MapNumber, short NpcNumber, string Purpose, Func<Player, NonPlayerCharacter, ValueTask> ActAsync);

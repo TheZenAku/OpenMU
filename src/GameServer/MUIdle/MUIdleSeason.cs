@@ -92,6 +92,9 @@ internal static class MUIdleSeason
             levelAfterReset = resetConfiguration?.LevelAfterReset,
             canReset = reason is null,
             reason,
+            bonus = MUIdleCatchUp.Bonus(player, configuration, now) is var bonus
+                ? new { catchUp = bonus.CatchUp, newcomer = bonus.Newcomer, total = bonus.Total }
+                : null,
         };
     }
 }

@@ -91,4 +91,24 @@ public class MUIdleConfiguration
     /// 0 leaves the reset feature's own limit alone.
     /// </summary>
     public int SeasonResetsPerWeek { get; set; } = 5;
+
+    /// <summary>
+    /// Gets or sets the extra experience per reset a character is behind last week's cap (0.1 = +10 %).
+    /// </summary>
+    public double CatchUpPerReset { get; set; } = 0.1;
+
+    /// <summary>
+    /// Gets or sets for how many days after its creation a character counts as a newcomer.
+    /// </summary>
+    public int NewcomerDays { get; set; } = 7;
+
+    /// <summary>
+    /// Gets or sets the extra experience of a newcomer (0.5 = +50 %).
+    /// </summary>
+    public double NewcomerBonus { get; set; } = 0.5;
+
+    /// <summary>
+    /// Gets or sets the most catch-up and newcomer bonus together (1.0 = +100 %).
+    /// </summary>
+    public double MaximumBonus { get; set; } = 1.0;
 }

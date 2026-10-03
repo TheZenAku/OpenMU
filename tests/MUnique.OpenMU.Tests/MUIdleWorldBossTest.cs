@@ -49,4 +49,19 @@ public class MUIdleWorldBossTest
     {
         Assert.That(MUIdleWorldBossPlugIn.Split(1000, new Dictionary<string, long>()), Is.Empty);
     }
+
+    /// <summary>
+    /// A QA request needs a boss; the pool and the duration stay within bounds.
+    /// </summary>
+    [Test]
+    public void ReadsQaRequests()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(MUIdleWorldBossPlugIn.ParseQaRequest("""{"boss":"Hydra"}"""), Is.EqualTo(("Hydra", (short?)null, 1000, 15)));
+            Assert.That(MUIdleWorldBossPlugIn.ParseQaRequest("""{"boss":"Gorgon","map":4,"zen":99999999,"minutes":0}"""), Is.EqualTo(("Gorgon", (short?)4, 1_000_000, 1)));
+            Assert.That(MUIdleWorldBossPlugIn.ParseQaRequest("""{"zen":5}"""), Is.Null);
+            Assert.That(MUIdleWorldBossPlugIn.ParseQaRequest("not json"), Is.Null);
+        });
+    }
 }

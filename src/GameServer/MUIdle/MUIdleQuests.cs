@@ -123,12 +123,12 @@ internal static class MUIdleQuests
                 need = r.MinimumNumber,
                 minMonsterLevel = (int?)r.DropItemGroup?.MinimumMonsterLevel,
                 maxMonsterLevel = (int?)r.DropItemGroup?.MaximumMonsterLevel,
-                monster = r.DropItemGroup?.Monster?.Designation,
+                monster = r.DropItemGroup?.Monster?.Designation.ValueInNeutralLanguage,
             };
         }).ToList();
         var kills = quest.RequiredMonsterKills.Select(k => new
         {
-            monster = k.Monster?.Designation ?? "?",
+            monster = k.Monster?.Designation.ValueInNeutralLanguage ?? "?",
             have = active ? state!.RequirementStates.FirstOrDefault(r => Equals(r.Requirement, k))?.KillCount ?? 0 : 0,
             need = k.MinimumNumber,
         }).ToList();
@@ -145,7 +145,7 @@ internal static class MUIdleQuests
                 ? null
                 : new
                 {
-                    name = giver.Designation,
+                    name = giver.Designation.ValueInNeutralLanguage,
                     map = stand.Map?.Name.ValueInNeutralLanguage,
                     x = stand.Spawn is { } s ? (s.X1 + s.X2) / 2 : 0,
                     y = stand.Spawn is { } t ? (t.Y1 + t.Y2) / 2 : 0,

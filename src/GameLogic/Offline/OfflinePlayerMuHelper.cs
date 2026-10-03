@@ -24,6 +24,11 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
     private readonly OfflinePlayer _player;
 
     private readonly CombatHandler _combatHandler;
+
+    /// <summary>
+    /// Gets the combat handler (read-only diagnostics, see <see cref="CombatHandler.Telemetry"/>).
+    /// </summary>
+    internal CombatHandler Combat => this._combatHandler;
     private readonly BuffHandler _buffHandler;
     private readonly ItemPickupHandler _itemPickupHandler;
     private readonly MovementHandler _movementHandler;

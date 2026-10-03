@@ -243,7 +243,7 @@ internal static class MUIdleEvents
             || player.PlayerState.CurrentState != PlayerState.EnteredWorld
             || player.SelectedCharacter is not { } character
             || MUIdleHuntTracker.GetSettings(player) is not { BossesFirst: true }
-            || MUIdleWorldBossPlugIn.LiveBossFor(player.GameContext, player.Level) is not { } boss
+            || MUIdleWorldBossPlugIn.LiveBossFor(player) is not { } boss
             || !Rallied.GetValue(player, _ => new HashSet<object>()).Add(boss.Monster))
         {
             return;

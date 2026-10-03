@@ -105,6 +105,13 @@ public class OfflinePlayer : Player
     public IAttackable? PriorityTarget { get; set; }
 
     /// <summary>
+    /// Gets what the combat of the session does now (diagnostics, see <see cref="CombatHandler.Telemetry"/>);
+    /// <c>null</c> before the session runs.
+    /// </summary>
+    internal (IAttackable? Target, byte AttackRange, string? Skill, int PriorityAttacks)? CombatTelemetry
+        => this._intelligence?.Combat.Telemetry;
+
+    /// <summary>
     /// Gets a value indicating whether the player should keep playing after dying and respawning.
     /// A normal offline session ends on death; bots override this to keep running forever.
     /// </summary>

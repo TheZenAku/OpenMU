@@ -103,7 +103,7 @@ internal static class MUIdleOnlineAutoMap
         }
 
         // A live world boss of the character's level: the rally decides where it goes.
-        if (settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(player.GameContext, player.Level) is not null)
+        if (settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(player) is not null)
         {
             return;
         }

@@ -5,6 +5,7 @@
 namespace MUnique.OpenMU.GameServer.MUIdle;
 
 using System.Collections.Concurrent;
+using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel.Configuration;
@@ -12,6 +13,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.NPC;
 using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameLogic.Views;
+using MUnique.OpenMU.GameLogic.Views.Inventory;
 using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.PlugIns;
@@ -58,6 +60,12 @@ public sealed class MUIdleWorldBossConfiguration
     public List<WorldBossDefinition> Bosses { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets the accounts a QA world boss (spawned through the local QA trigger, see
+    /// <see cref="MUIdleWorldBossPlugIn"/>) is for: only their characters rally to it and get its reward.
+    /// </summary>
+    public List<string> QaAccounts { get; set; } = ["test300", "qa001", "qa002", "qa003", "idle01"];
+
+    /// <summary>
     /// Creates the default bosses: classic monsters on their own maps, every six hours at :40 UTC,
     /// staggered by an hour or two so they do not overlap.
     /// </summary>
@@ -99,6 +107,12 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
 {
     private const string LogCategory = "MUnique.OpenMU.GameServer.MUIdle.WorldBoss";
 
+    /// <summary>The log category of the QA boss telemetry (only written while a QA boss lives).</summary>
+    private const string QaLogCategory = "MUnique.OpenMU.GameServer.MUIdle.WorldBoss.Qa";
+
+    /// <summary>The QA trigger file in the directory named by the <c>MUIDLE_QA_DIR</c> environment variable.</summary>
+    private const string QaTriggerFile = "worldboss.json";
+
     /// <summary>How far, walking from the warp's landing, a boss may appear.</summary>
     private const int MaxWalkSteps = 90;
 
@@ -129,7 +143,7 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         foreach (var boss in configuration.Bosses)
         {
             var map = gameContext.Configuration.Maps.FirstOrDefault(m => m.Number == boss.MapNumber);
-            var alive = Fights.Values.FirstOrDefault(f => f.Definition.Name == boss.Name && f.GameContext == gameContext);
+            var alive = Fights.Values.FirstOrDefault(f => f.Definition.Name == boss.Name && f.GameContext == gameContext && !f.IsQa);
             yield return new
             {
                 name = boss.Name,
@@ -145,19 +159,57 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
     }
 
     /// <summary>
-    /// Gets a live boss a character of the given level should go to, if any (for HUNT).
+    /// Gets a live boss the player's character should go to, if any (for HUNT): of its level, and a QA
+    /// boss only for a QA account.
     /// </summary>
-    /// <param name="gameContext">The game context.</param>
-    /// <param name="level">The character level.</param>
+    /// <param name="player">The player.</param>
     /// <returns>The live boss monster and its definition.</returns>
-    public static (Monster Monster, WorldBossDefinition Definition)? LiveBossFor(IGameContext gameContext, int level)
+    public static (Monster Monster, WorldBossDefinition Definition)? LiveBossFor(Player player)
     {
+        var level = player.Level;
+        var qa = IsQaAccount(player);
         var fight = Fights.Values
-            .Where(f => f.GameContext == gameContext && f.Monster.IsAlive && level >= f.Definition.MinimumLevel)
-            .OrderByDescending(f => f.Definition.MinimumLevel)
+            .Where(f => f.GameContext == player.GameContext && f.Monster.IsAlive && level >= f.Definition.MinimumLevel && (!f.IsQa || qa))
+            .OrderByDescending(f => f.IsQa)
+            .ThenByDescending(f => f.Definition.MinimumLevel)
             .FirstOrDefault();
         return fight is null ? null : (fight.Monster, fight.Definition);
     }
+
+    /// <summary>
+    /// Reads a QA spawn request (<c>{"boss":"Hydra","map":7,"zen":1000,"minutes":15}</c>; only the boss
+    /// is required): <c>null</c> when it is not one.
+    /// </summary>
+    /// <param name="json">The request.</param>
+    /// <returns>The boss name, map override, zen pool and duration.</returns>
+    internal static (string Boss, short? Map, int Zen, int Minutes)? ParseQaRequest(string json)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("boss", out var boss) || boss.GetString() is not { Length: > 0 } name)
+            {
+                return null;
+            }
+
+            short? map = root.TryGetProperty("map", out var m) && m.TryGetInt16(out var number) ? number : null;
+            var zen = root.TryGetProperty("zen", out var z) && z.TryGetInt32(out var pool) ? Math.Clamp(pool, 0, 1_000_000) : 1000;
+            var minutes = root.TryGetProperty("minutes", out var d) && d.TryGetInt32(out var duration) ? Math.Clamp(duration, 1, 60) : 15;
+            return (name, map, zen, minutes);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static MUIdleWorldBossConfiguration? GetConfiguration(IGameContext gameContext)
+        => gameContext.PlugInManager.GetActivePlugInsOf<IPeriodicTaskPlugIn>().OfType<MUIdleWorldBossPlugIn>().FirstOrDefault()?.Configuration;
+
+    private static bool IsQaAccount(Player? player)
+        => player?.Account?.LoginName is { } login
+           && GetConfiguration(player.GameContext)?.QaAccounts.Contains(login, StringComparer.OrdinalIgnoreCase) == true;
 
     /// <inheritdoc />
     public object CreateDefaultConfig() => MUIdleWorldBossConfiguration.CreateDefault();
@@ -187,11 +239,14 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
             await SpawnAsync(gameContext, boss, logger).ConfigureAwait(false);
         }
 
+        await this.TryQaSpawnAsync(gameContext, configuration, logger).ConfigureAwait(false);
+        await LogQaTelemetryAsync(gameContext).ConfigureAwait(false);
+
         foreach (var (monster, fight) in Fights.Where(f => f.Value.GameContext == gameContext && now - f.Value.SpawnedUtc > f.Value.Definition.Duration).ToList())
         {
             if (Fights.TryRemove(monster, out _))
             {
-                logger.LogInformation("MUIdle world boss {Boss} left {Map} unbeaten; {Players} player(s) had hurt it.", fight.Definition.Name, monster.CurrentMap.Definition.Name, fight.Damage.Count);
+                logger.LogInformation("MUIdle world boss {Boss}{Qa} left {Map} unbeaten; {Players} player(s) had hurt it.", fight.Definition.Name, fight.IsQa ? " [QA]" : string.Empty, monster.CurrentMap.Definition.Name, fight.Damage.Count);
                 await monster.CurrentMap.RemoveAsync(monster).ConfigureAwait(false);
                 monster.Dispose();
             }
@@ -201,6 +256,54 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         {
             Spawned.TryRemove(old, out _);
         }
+    }
+
+    /// <summary>
+    /// The QA trigger: a request file in the directory of the <c>MUIDLE_QA_DIR</c> environment variable
+    /// (unset = off; only someone on the server machine can drop it) spawns a QA instance of a configured
+    /// boss through the real spawn, fight and payout - for the QA accounts only, without touching the
+    /// schedule and without a broadcast. The file is consumed.
+    /// </summary>
+    private async ValueTask TryQaSpawnAsync(GameContext gameContext, MUIdleWorldBossConfiguration configuration, ILogger logger)
+    {
+        if (Environment.GetEnvironmentVariable("MUIDLE_QA_DIR") is not { Length: > 0 } directory
+            || Path.Combine(directory, QaTriggerFile) is not { } file
+            || !File.Exists(file))
+        {
+            return;
+        }
+
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(file).ConfigureAwait(false);
+            File.Delete(file);
+        }
+        catch (IOException ex)
+        {
+            logger.LogWarning(ex, "MUIdle QA world boss: could not read {File}.", file);
+            return;
+        }
+
+        if (ParseQaRequest(json) is not { } request
+            || configuration.Bosses.FirstOrDefault(b => string.Equals(b.Name, request.Boss, StringComparison.OrdinalIgnoreCase)) is not { } boss)
+        {
+            logger.LogWarning("MUIdle QA world boss: request {Request} names no configured boss.", json);
+            return;
+        }
+
+        var instance = new WorldBossDefinition
+        {
+            Name = boss.Name,
+            MonsterNumber = boss.MonsterNumber,
+            MapNumber = request.Map ?? boss.MapNumber,
+            X = request.Map is null ? boss.X : (byte)0,
+            Y = request.Map is null ? boss.Y : (byte)0,
+            Duration = TimeSpan.FromMinutes(request.Minutes),
+            RewardZen = request.Zen,
+            MinimumLevel = boss.MinimumLevel,
+        };
+        await SpawnAsync(gameContext, instance, logger, qa: true).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -218,7 +321,13 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         }
 
         var player = attacker as Player ?? (attacker as Monster)?.SummonedBy;
-        if (player?.SelectedCharacter?.Name is not { } name || hitInfo.TotalDamage == 0)
+        if (player?.SelectedCharacter?.Name is not { } name)
+        {
+            return;
+        }
+
+        fight.Hits.AddOrUpdate(name, 1, (_, count) => count + 1);
+        if (hitInfo.TotalDamage == 0)
         {
             return;
         }
@@ -239,8 +348,9 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         var shares = Split(fight.Definition.RewardZen, fight.Damage);
         var killerName = (killer as Player ?? (killer as Monster)?.SummonedBy)?.SelectedCharacter?.Name ?? "-";
         logger.LogInformation(
-            "MUIdle world boss {Boss} (spawned {Spawned:u}) defeated on {Map} by {Killer}: {Total} damage from {Count} player(s), {Zen} zen split.",
+            "MUIdle world boss {Boss}{Qa} (spawned {Spawned:u}) defeated on {Map} by {Killer}: {Total} damage from {Count} player(s), {Zen} zen split.",
             fight.Definition.Name,
+            fight.IsQa ? " [QA]" : string.Empty,
             fight.SpawnedUtc,
             monster.CurrentMap.Definition.Name,
             killerName,
@@ -250,22 +360,36 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
 
         foreach (var share in shares)
         {
-            var paid = share.Zen > 0
-                       && fight.Players.TryGetValue(share.Name, out var player)
-                       && player.PlayerState.CurrentState == PlayerState.EnteredWorld
-                       && player.TryAddMoney(share.Zen);
+            // The character's session now - a hunter that went offline (or came back) during the fight
+            // is a new player object; the damage counts by character.
+            var receiver = fight.GameContext.GetPlayerByCharacterName(share.Name)
+                           ?? (fight.Players.TryGetValue(share.Name, out var hitter) ? hitter : null);
+            var refusal = share.Zen <= 0 ? "nothing to pay"
+                : receiver is null || receiver.PlayerState.CurrentState != PlayerState.EnteredWorld ? "not in the game"
+                : fight.IsQa && !IsQaAccount(receiver) ? "QA boss, not a QA account"
+                : null;
+            var paid = refusal is null
+                       && await receiver!.RunPersistenceExclusiveAsync(() => ValueTask.FromResult(receiver.TryAddMoney(share.Zen))).ConfigureAwait(false);
             logger.LogInformation(
-                "MUIdle world boss {Boss} payout: {Player} dealt {Damage} ({Percent:0.00} %) -> {Zen} zen{Paid}.",
+                "MUIdle world boss {Boss}{Qa} payout: {Player} dealt {Damage} ({Percent:0.00} %) in {Hits} hit(s) -> {Zen} zen{Paid}.",
                 fight.Definition.Name,
+                fight.IsQa ? " [QA]" : string.Empty,
                 share.Name,
                 share.Damage,
                 share.Percent,
+                fight.Hits.TryGetValue(share.Name, out var hits) ? hits : 0,
                 share.Zen,
-                paid ? string.Empty : " (not paid: offline or at the zen limit)");
-            if (paid && fight.Players.TryGetValue(share.Name, out var receiver))
+                paid ? string.Empty : $" (not paid: {refusal ?? "zen limit"})");
+            if (paid)
             {
-                await Tell(receiver, $"{fight.Definition.Name}: +{share.Zen:N0} zen ({share.Percent:0.#} % of the damage)", $"{fight.Definition.Name}: +{share.Zen:N0} zen ({share.Percent:0.#} % do dano)").ConfigureAwait(false);
+                await receiver!.InvokeViewPlugInAsync<IUpdateMoneyPlugIn>(p => p.UpdateMoneyAsync()).ConfigureAwait(false);
+                await Tell(receiver!, $"{fight.Definition.Name}: +{share.Zen:N0} zen ({share.Percent:0.#} % of the damage)", $"{fight.Definition.Name}: +{share.Zen:N0} zen ({share.Percent:0.#} % do dano)").ConfigureAwait(false);
             }
+        }
+
+        if (fight.IsQa)
+        {
+            return;
         }
 
         await AnnounceAsync(fight.GameContext, $"{fight.Definition.Name} was defeated by {killerName}!", $"{fight.Definition.Name} foi derrotado por {killerName}!").ConfigureAwait(false);
@@ -300,7 +424,7 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         return today.Concat(tomorrow).OrderBy(t => t).Cast<DateTime?>().FirstOrDefault();
     }
 
-    private static async ValueTask SpawnAsync(GameContext gameContext, WorldBossDefinition boss, ILogger logger)
+    private static async ValueTask SpawnAsync(GameContext gameContext, WorldBossDefinition boss, ILogger logger, bool qa = false)
     {
         var definition = gameContext.Configuration.Monsters.FirstOrDefault(m => m.Number == boss.MonsterNumber);
         var gameMap = await gameContext.GetMapAsync((ushort)boss.MapNumber).ConfigureAwait(false);
@@ -329,11 +453,17 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         };
         var monster = new Monster(area, definition, gameMap, gameContext.DropGenerator, new BasicMonsterIntelligence(), gameContext.PlugInManager, gameContext.PathFinderPool);
         monster.Initialize();
-        Fights[monster] = new BossFight(boss, gameContext, monster, DateTime.UtcNow);
+        Fights[monster] = new BossFight(boss, gameContext, monster, DateTime.UtcNow) { IsQa = qa };
         await gameMap.AddAsync(monster).ConfigureAwait(false);
         monster.OnSpawn();
 
-        logger.LogInformation("MUIdle world boss {Boss} spawned on {Map} at {X},{Y} ({Zen} zen to split).", boss.Name, gameMap.Definition.Name, point.X, point.Y, boss.RewardZen);
+        logger.LogInformation("MUIdle world boss {Boss}{Qa} spawned on {Map} at {X},{Y} ({Zen} zen to split).", boss.Name, qa ? " [QA]" : string.Empty, gameMap.Definition.Name, point.X, point.Y, boss.RewardZen);
+        if (qa)
+        {
+            // A QA boss is for the QA accounts: no broadcast to the players.
+            return;
+        }
+
         var mapName = gameMap.Definition.Name.ValueInNeutralLanguage;
         await AnnounceAsync(gameContext, $"World boss {boss.Name} appeared in {mapName}!", $"Chefe do mundo {boss.Name} apareceu em {mapName}!").ConfigureAwait(false);
     }
@@ -460,6 +590,68 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         return steps;
     }
 
+    /// <summary>
+    /// The QA telemetry of a live QA boss, every check (10 s): for each QA character hunting it, where it
+    /// stands, what it does, why it would not fight, and what it achieved.
+    /// </summary>
+    private static async ValueTask LogQaTelemetryAsync(GameContext gameContext)
+    {
+        var fights = Fights.Values.Where(f => f.IsQa && f.GameContext == gameContext && f.Monster.IsAlive).ToList();
+        if (fights.Count == 0)
+        {
+            return;
+        }
+
+        var logger = gameContext.LoggerFactory.CreateLogger(QaLogCategory);
+        foreach (var fight in fights)
+        {
+            var boss = fight.Monster;
+            logger.LogInformation(
+                "QA boss {Boss} #{Id} on {Map} at {X},{Y}: health {Health:0}/{MaxHealth:0}, {Players} damager(s).",
+                fight.Definition.Name,
+                boss.Id,
+                boss.CurrentMap.Definition.Name,
+                boss.Position.X,
+                boss.Position.Y,
+                boss.Health,
+                boss.Attributes[GameLogic.Attributes.Stats.MaximumHealth],
+                fight.Damage.Count);
+            foreach (var player in await gameContext.GetPlayersAsync().ConfigureAwait(false))
+            {
+                if (!IsQaAccount(player) || player.SelectedCharacter?.Name is not { } name || LiveBossFor(player) is not { } live || !ReferenceEquals(live.Monster, boss))
+                {
+                    continue;
+                }
+
+                var combat = (player as GameLogic.Offline.OfflinePlayer)?.CombatTelemetry;
+                string target = combat?.Target switch
+                {
+                    null => "-",
+                    var t when ReferenceEquals(t, boss) => "the boss",
+                    Monster m => m.Definition.Designation.ValueInNeutralLanguage,
+                    var t => t.ToString() ?? "?",
+                };
+                logger.LogInformation(
+                    "QA boss {Boss} hunter {Character} ({Kind}) on {Map} at {X},{Y}, {Distance:0.0} tiles: activity {Activity}, target {Target}, range {Range}, skill {Skill}, boss attacks {Attacks}, hits {Hits}, damage {Damage}, safety {Safety}.",
+                    fight.Definition.Name,
+                    name,
+                    player is GameLogic.Offline.OfflinePlayer ? "offline" : "online",
+                    player.CurrentMap?.Definition.Name.ValueInNeutralLanguage ?? "-",
+                    player.Position.X,
+                    player.Position.Y,
+                    player.CurrentMap == boss.CurrentMap ? player.Position.EuclideanDistanceTo(boss.Position) : double.NaN,
+                    System.Text.Json.JsonSerializer.Serialize(MUIdleHuntTracker.Snapshot(player)),
+                    target,
+                    combat?.AttackRange.ToString() ?? "-",
+                    combat?.Skill ?? "-",
+                    combat?.PriorityAttacks.ToString() ?? "-",
+                    fight.Hits.TryGetValue(name, out var hits) ? hits : 0,
+                    fight.Damage.TryGetValue(name, out var damage) ? damage : 0,
+                    GameLogic.Offline.CombatHandler.ExplainUnsafe(player, boss.Definition, requireQuickKill: false) ?? "fights it");
+            }
+        }
+    }
+
     private static ValueTask AnnounceAsync(IGameContext gameContext, string english, string portuguese)
         => gameContext.ForEachPlayerAsync(player => Tell(player, english, portuguese).AsTask());
 
@@ -478,7 +670,13 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
 
     private sealed record BossFight(WorldBossDefinition Definition, IGameContext GameContext, Monster Monster, DateTime SpawnedUtc)
     {
+        /// <summary>Gets a value indicating whether this is a QA instance (QA trigger, QA accounts only).</summary>
+        public bool IsQa { get; init; }
+
         public ConcurrentDictionary<string, long> Damage { get; } = new();
+
+        /// <summary>Gets the hits per character, blocked ones (no damage) included.</summary>
+        public ConcurrentDictionary<string, int> Hits { get; } = new();
 
         public ConcurrentDictionary<string, Player> Players { get; } = new();
     }

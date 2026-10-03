@@ -134,6 +134,12 @@ public sealed class CombatHandler
 
     private IAttackable? _refusedPriorityTarget;
 
+    private byte _lastAttackRange;
+
+    private string? _lastSkillName;
+
+    private int _priorityAttacks;
+
     private IAttackable? _currentTarget;
     private int _nearbyMonsterCount;
     private int _targetsAroundCurrent = 1;
@@ -287,6 +293,14 @@ public sealed class CombatHandler
     }
 
     /// <summary>
+    /// Gets what the handler does now, for diagnostics (MUIdle's world boss QA telemetry): the target,
+    /// the attack range of the last attack check, the last skill used and the attacks against the
+    /// priority target.
+    /// </summary>
+    internal (IAttackable? Target, byte AttackRange, string? Skill, int PriorityAttacks) Telemetry
+        => (this._currentTarget, this._lastAttackRange, this._lastSkillName, this._priorityAttacks);
+
+    /// <summary>
     /// Decrements the skill cooldown counter by one tick.
     /// </summary>
     public void DecrementCooldown()
@@ -329,6 +343,7 @@ public sealed class CombatHandler
         }
 
         byte attackRange = this.GetEffectiveAttackRange();
+        this._lastAttackRange = attackRange;
         if (!this.IsTargetInAttackRange(this._currentTarget, attackRange))
         {
             if (await this._movementHandler.MoveCloserToTargetAsync(this._currentTarget, attackRange).ConfigureAwait(false))
@@ -515,6 +530,11 @@ public sealed class CombatHandler
 
         this._player.Rotation = this._player.GetDirectionTo(target);
         this._player.LastAttackUtc = DateTime.UtcNow;
+        this._lastSkillName = skillEntry?.Skill?.Name.ValueInNeutralLanguage ?? "basic attack";
+        if (ReferenceEquals(target, this._player.PriorityTarget))
+        {
+            this._priorityAttacks++;
+        }
 
         if (skillEntry?.Skill is not { } skill)
         {

@@ -807,10 +807,6 @@ internal sealed class BotNavigator : AsyncDisposable
             .OfType<Monster>()
             .Count(m => m.IsAlive && !m.IsAtSafezone() && m.SummonedBy is null && CombatHandler.IsSafeTarget(this._player, m.Definition));
 
-        // The bot counts as stuck when it has been frozen on the spot: quickly when there is nothing to
-        // fight (a wedged walk or blocked path), and after a much longer grace when huntable monsters are
-        // around - standing still next to monsters usually just means fighting, but if the position stays
-        // frozen well beyond that, something is wedged (e.g. a monster in range that cannot be reached).
         // A rally point (a live world boss) on this map: the monsters on the way do not hold the bot
         // back - it fought the entrance's trash for a quarter of an hour before. It walks to the spot,
         // and its combat centre is the spot, so the targets it picks are the ones there.
@@ -821,6 +817,7 @@ internal sealed class BotNavigator : AsyncDisposable
             {
                 this._destination = rally.Spot;
                 this._hasDestination = true;
+                this.Report(BotActivity.Travelling, map.Definition.Name.ValueInNeutralLanguage);
                 if (!await this.TravelTowardAsync(map, rally.Spot, cancellationToken).ConfigureAwait(false))
                 {
                     this._hasDestination = false;
@@ -830,6 +827,10 @@ internal sealed class BotNavigator : AsyncDisposable
             }
         }
 
+        // The bot counts as stuck when it has been frozen on the spot: quickly when there is nothing to
+        // fight (a wedged walk or blocked path), and after a much longer grace when huntable monsters are
+        // around - standing still next to monsters usually just means fighting, but if the position stays
+        // frozen well beyond that, something is wedged (e.g. a monster in range that cannot be reached).
         var stuckTimeout = monstersNearby > 0 ? StuckWithMonstersTimeout : StuckTimeout;
         var stuck = DateTime.UtcNow - this._lastMoveUtc > stuckTimeout;
         if (stuck)

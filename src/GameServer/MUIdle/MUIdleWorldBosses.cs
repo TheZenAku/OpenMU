@@ -204,6 +204,14 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
         }
     }
 
+    /// <summary>
+    /// Gets the QA accounts of the configuration (the QA tools act only for them).
+    /// </summary>
+    /// <param name="gameContext">The game context.</param>
+    /// <returns>The QA accounts.</returns>
+    public static IReadOnlyCollection<string> QaAccountsOf(IGameContext gameContext)
+        => GetConfiguration(gameContext)?.QaAccounts ?? [];
+
     private static MUIdleWorldBossConfiguration? GetConfiguration(IGameContext gameContext)
         => gameContext.PlugInManager.GetActivePlugInsOf<IPeriodicTaskPlugIn>().OfType<MUIdleWorldBossPlugIn>().FirstOrDefault()?.Configuration;
 

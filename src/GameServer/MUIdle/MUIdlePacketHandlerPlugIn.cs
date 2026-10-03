@@ -83,6 +83,7 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
             requested.LockedItems = current.LockedItems;
             requested.SellMaxItemLevel = Math.Clamp(requested.SellMaxItemLevel, 0, 15);
             requested.PreferredMap = requested.PreferredMap is { } map && player.GameContext.Configuration.Maps.Any(m => m.Number == map) ? map : null;
+            requested.EventOptOut = requested.EventOptOut.Where(key => MUIdleEvents.Joinable.Any(t => MUIdleEvents.Key(t) == key)).Distinct().ToList();
             state.SettingsJson = requested.ToJson();
         }).ConfigureAwait(false);
         if (requested.AutoBuild)

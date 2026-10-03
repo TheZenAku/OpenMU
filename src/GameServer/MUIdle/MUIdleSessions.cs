@@ -335,6 +335,7 @@ internal static class MUIdleSessions
                 reason = o.Refusal is { } refusal ? MUIdleHuntTracker.RefusalName(refusal) : null,
             }),
             ground = ground is { } point ? new { x = (int)point.X, y = (int)point.Y } : null,
+            events = MUIdleEvents.Info(player, settings),
         });
         return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
     }

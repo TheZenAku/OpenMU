@@ -73,6 +73,17 @@ public sealed class MUIdleSettings
     public List<Guid> LockedItems { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets a value indicating whether HUNT enters an event when it opens and the character
+    /// is ready for it (<see cref="MUIdleEvents"/>).
+    /// </summary>
+    public bool EventsFirst { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the events (their keys, see <see cref="MUIdleEvents.Key"/>) the player took out of that.
+    /// </summary>
+    public List<string> EventOptOut { get; set; } = [];
+
+    /// <summary>
     /// Parses the settings from JSON; returns the defaults for null or invalid JSON.
     /// </summary>
     /// <param name="json">The JSON.</param>

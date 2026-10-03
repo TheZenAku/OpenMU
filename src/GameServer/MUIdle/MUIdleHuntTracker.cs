@@ -37,6 +37,9 @@ internal enum HuntActivityKind
 
     /// <summary>Dead, waiting for the respawn.</summary>
     Dead,
+
+    /// <summary>In an event (Blood Castle, Devil Square, Chaos Castle).</summary>
+    Event,
 }
 
 /// <summary>
@@ -84,12 +87,27 @@ internal static class MUIdleHuntTracker
         var entry = Entries.GetValue(player, _ => new Entry());
         lock (entry)
         {
+            entry.Settings = settings;
             entry.PinnedMap = settings.AutoMapSelection ? null : settings.PreferredMap;
             entry.RefusalCheckedUtc = DateTime.MinValue;
             if (huntIntent is { } hunt)
             {
                 entry.HuntIntent = hunt;
             }
+        }
+    }
+
+    /// <summary>
+    /// Gets the idle settings last set for the player (null until then).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The settings.</returns>
+    public static MUIdleSettings? GetSettings(Player player)
+    {
+        var entry = Entries.GetValue(player, _ => new Entry());
+        lock (entry)
+        {
+            return entry.Settings;
         }
     }
 
@@ -253,6 +271,7 @@ internal static class MUIdleHuntTracker
         HuntActivityKind.Shopping => "shopping",
         HuntActivityKind.Buff => "buff",
         HuntActivityKind.Dead => "dead",
+        HuntActivityKind.Event => "event",
         _ => "idle",
     };
 
@@ -288,6 +307,8 @@ internal static class MUIdleHuntTracker
         public int? PinnedMap { get; set; }
 
         public bool HuntIntent { get; set; }
+
+        public MUIdleSettings? Settings { get; set; }
 
         public int? ArrivalMap { get; set; }
 

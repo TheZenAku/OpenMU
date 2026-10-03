@@ -55,6 +55,19 @@ public sealed class CombatHandler
     private const float MinAttackAdvantage = 1.2f;
 
     /// <summary>
+    /// For a target the session was sent for (a world boss, see <see cref="OfflinePlayer.PriorityTarget"/>):
+    /// the largest share of the bot's maximum health a single average hit may take. The fight is chosen
+    /// by the player (bosses first), long on purpose and shared with others; the bot still refuses a boss
+    /// which would fell it in a few hits.
+    /// </summary>
+    private const float PrioritySafeHitHealthShare = 0.35f;
+
+    /// <summary>
+    /// For a priority target: the attack power only has to exceed the monster's defense (no margin).
+    /// </summary>
+    private const float PriorityMinAttackAdvantage = 1.0f;
+
+    /// <summary>
     /// See <see cref="IsSafeTarget"/>: the monster must die within this many net hits of the bot.
     /// The per-hit checks alone let a fighter "safely" besiege a 100k-health tank monster for ten
     /// minutes, until its potions ran dry and it died anyway - the fight length itself is the risk.
@@ -118,6 +131,8 @@ public sealed class CombatHandler
     private readonly IMuHelperSettings? _config;
     private readonly MovementHandler _movementHandler;
     private readonly ConditionalSkillSlot[] _conditionalSkillSlots;
+
+    private IAttackable? _refusedPriorityTarget;
 
     private IAttackable? _currentTarget;
     private int _nearbyMonsterCount;
@@ -220,11 +235,23 @@ public sealed class CombatHandler
     /// <param name="requireQuickKill">Whether the monster must die within the hit budget.</param>
     /// <returns><c>true</c> when it is safe to fight.</returns>
     public static bool IsSafeTarget(Player player, MonsterDefinition monster, bool requireQuickKill)
+        => ExplainUnsafe(player, monster, requireQuickKill) is null;
+
+    /// <summary>
+    /// Says why the player cannot fight the monster (see <see cref="IsSafeTarget(Player, MonsterDefinition, bool)"/>),
+    /// with the numbers; <c>null</c> when it can. Without <paramref name="requireQuickKill"/> (a priority
+    /// target) the per-hit and attack margins are wider, see <see cref="PrioritySafeHitHealthShare"/>.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="monster">The monster.</param>
+    /// <param name="requireQuickKill">Whether the monster must die within the hit budget.</param>
+    /// <returns>The reason, or <c>null</c>.</returns>
+    public static string? ExplainUnsafe(Player player, MonsterDefinition monster, bool requireQuickKill)
     {
         var (monsterLevel, averageDamage, monsterDefense, monsterHealth, monsterAttackRate) = GetMonsterCombatStats(monster);
         if (monsterLevel <= 0 || player.Attributes is not { } attributes)
         {
-            return false;
+            return "no level or attributes";
         }
 
         // Reset-aware: on servers with the reset feature a freshly reset character is nominally a
@@ -233,22 +260,30 @@ public sealed class CombatHandler
         // lets a low-level character fight monsters a few levels above its own.
         if (monsterLevel > BotResetHandler.GetEffectiveLevel(player) + LevelHeadroom)
         {
-            return false;
+            return $"level {monsterLevel} above {BotResetHandler.GetEffectiveLevel(player)} + {LevelHeadroom}";
         }
 
         var netHit = Math.Max(0f, averageDamage - attributes[Stats.DefensePvm]) * GetExpectedHitShare(player, monsterAttackRate);
-        if (netHit > SafeHitHealthShare * Math.Max(1f, attributes[Stats.MaximumHealth]))
+        var maximumHealth = Math.Max(1f, attributes[Stats.MaximumHealth]);
+        var hitShare = requireQuickKill ? SafeHitHealthShare : PrioritySafeHitHealthShare;
+        if (netHit > hitShare * maximumHealth)
         {
-            return false;
+            return $"a hit takes {netHit:0} of {maximumHealth:0} health (more than {hitShare:P0})";
         }
 
         var attackPower = GetAttackPower(player);
-        if (attackPower <= monsterDefense * MinAttackAdvantage)
+        var advantage = requireQuickKill ? MinAttackAdvantage : PriorityMinAttackAdvantage;
+        if (attackPower <= monsterDefense * advantage)
         {
-            return false;
+            return $"attack {attackPower:0} not above defense {monsterDefense:0} x {advantage}";
         }
 
-        return !requireQuickKill || (attackPower - monsterDefense) * GetHitBudget(player, monsterLevel) >= monsterHealth;
+        if (requireQuickKill && (attackPower - monsterDefense) * GetHitBudget(player, monsterLevel) < monsterHealth)
+        {
+            return $"health {monsterHealth:0} not within the hit budget";
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -520,12 +555,24 @@ public sealed class CombatHandler
         }
 
         // A target the session was sent for (a world boss) comes first whenever it is in range.
-        if (this._player.PriorityTarget is Monster priority
-            && this.IsTargetStillValid(priority)
-            && this.IsWithinSafeHuntLevel(priority))
+        if (this._player.PriorityTarget is Monster priority && this.IsTargetStillValid(priority))
         {
-            this._currentTarget = priority;
-            return;
+            if (this.IsWithinSafeHuntLevel(priority))
+            {
+                this._currentTarget = priority;
+                return;
+            }
+
+            // Once per target: why the bot stands next to the monster it was sent for without fighting it.
+            if (!ReferenceEquals(this._refusedPriorityTarget, priority))
+            {
+                this._refusedPriorityTarget = priority;
+                this._player.Logger.LogInformation(
+                    "Bot {Character} does not attack its priority target {Monster}: {Reason}.",
+                    this._player.Name,
+                    priority.Definition.Designation,
+                    ExplainUnsafe(this._player, priority.Definition, requireQuickKill: false) ?? "out of reach");
+            }
         }
 
         if (this._currentTarget is { } t && !this.IsTargetStillValid(t))

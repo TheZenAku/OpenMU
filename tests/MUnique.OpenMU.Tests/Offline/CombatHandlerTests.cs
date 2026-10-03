@@ -179,6 +179,32 @@ public class CombatHandlerTests
         Assert.That(CombatHandler.IsSafeTarget(player, monster.Definition), Is.False);
     }
 
+    /// <summary>
+    /// A world boss the session was sent for (a priority target) may hit harder than a regular target:
+    /// a hit of about a quarter of the health is refused for a regular target and accepted for it.
+    /// </summary>
+    [Test]
+    public async ValueTask ExplainUnsafe_PriorityTarget_AcceptsAHarderHit()
+    {
+        var player = await this.CreateOfflinePlayerAsync().ConfigureAwait(false);
+        player.Attributes![Stats.Level] = 300;
+        await player.SkillList!.AddLearnedSkillAsync(new TestSkill { AttackDamage = 20 }).ConfigureAwait(false);
+        var health = Math.Max(1f, player.Attributes[Stats.MaximumHealth]);
+        var damage = player.Attributes[Stats.DefensePvm] + (0.25f * health);
+        var boss = new MonsterDefinition { Number = 30001, ObjectKind = NpcObjectKind.Monster };
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.Level, Value = 10 });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MinimumPhysBaseDmg, Value = damage });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumPhysBaseDmg, Value = damage });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumHealth, Value = 1_000_000 });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.AttackRatePvm, Value = 100_000 });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(CombatHandler.ExplainUnsafe(player, boss, requireQuickKill: true), Does.StartWith("a hit takes"));
+            Assert.That(CombatHandler.ExplainUnsafe(player, boss, requireQuickKill: false), Is.Null);
+        });
+    }
+
     private async ValueTask<OfflinePlayer> CreateOfflinePlayerAsync()
     {
         return await PlayerTestHelper.CreateOfflineLevelingPlayerAsync(this._gameContext).ConfigureAwait(false);

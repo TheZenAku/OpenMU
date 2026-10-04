@@ -218,6 +218,9 @@ internal static class MUIdleHuntTracker
             }
         }
 
+        // The player's own switch (or the resume) ends a fee pause; still short of the fee, the
+        // next check pauses again.
+        MUIdleEconomy.ClearPause(player);
         Report(player, hunt ? HuntActivityKind.Hunting : HuntActivityKind.Idle);
     }
 

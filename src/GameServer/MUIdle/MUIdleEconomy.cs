@@ -211,6 +211,18 @@ internal static class MUIdleEconomy
     /// <returns><c>true</c>, if so.</returns>
     public static bool IsPaused(Player player) => Pauses.TryGetValue(player, out var pause) && pause.Paused;
 
+    /// <summary>
+    /// Ends the fee pause of the player (HUNT was switched by the player or resumed by the client).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    public static void ClearPause(Player player)
+    {
+        if (Pauses.TryGetValue(player, out var pause))
+        {
+            pause.Clear();
+        }
+    }
+
     private static ILogger Logger(Player player) => player.GameContext.LoggerFactory.CreateLogger("MUnique.OpenMU.GameServer.MUIdle.Hunt");
 
     private static MuHelperConfiguration? Configuration(Player player)

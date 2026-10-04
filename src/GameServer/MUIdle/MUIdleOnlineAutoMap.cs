@@ -6,11 +6,13 @@ namespace MUnique.OpenMU.GameServer.MUIdle;
 
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
+using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Bots;
 using MUnique.OpenMU.GameLogic.PlayerActions;
 using MUnique.OpenMU.GameServer.RemoteView;
+using MUnique.OpenMU.Pathfinding;
 
 /// <summary>
 /// HUNT with the hunting map on AUTO, for a player with a client: when a clearly better map is open to
@@ -24,6 +26,8 @@ internal static class MUIdleOnlineAutoMap
     private static readonly WarpAction Warp = new();
 
     private static readonly ConditionalWeakTable<Player, StrongBox<DateTime>> NextCheckUtc = new();
+
+    private static readonly ConditionalWeakTable<Player, StrongBox<DateTime>> NextQuestStepUtc = new();
 
     /// <summary>
     /// Moves the online AUTO hunters of the game context to a better map where one is due.
@@ -88,6 +92,36 @@ internal static class MUIdleOnlineAutoMap
         return now < next ? (false, next.Value) : (true, now + cooldown);
     }
 
+    private static async ValueTask GoToQuestMonsterAsync(RemotePlayer player, GameMapDefinition current, (MonsterDefinition Monster, short Map, Point Spot) target)
+    {
+        if (current.Number == target.Map)
+        {
+            if (player.Position.EuclideanDistanceTo(target.Spot) > 20 && player.SelectedCharacter is { } character)
+            {
+                MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling, current.Name.ValueInNeutralLanguage);
+                var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+                await MUIdleSessions.SendStateAsync(player, state, resume: true, ground: target.Spot).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        if (await player.GameContext.GetMapAsync((ushort)target.Map).ConfigureAwait(false) is not { } map
+            || MUIdleHuntMaps.ReachingWarp(player, map, target.Spot) is not { } warp)
+        {
+            return;
+        }
+
+        player.Logger.LogInformation(
+            "MUIdle: HUNT (AUTO) takes {Character} to {Monster} on {Map} for a quest item.",
+            player.Name,
+            target.Monster.Designation.ValueInNeutralLanguage,
+            map.Definition.Name.ValueInNeutralLanguage);
+        MUIdleHuntTracker.Report(player, HuntActivityKind.Warping, map.Definition.Name.ValueInNeutralLanguage);
+        MUIdleHuntTracker.ExpectPinnedArrival(player, target.Map, target.Spot);
+        await Warp.WarpToAsync(player, warp).ConfigureAwait(false);
+    }
+
     private static async ValueTask TryMoveAsync(RemotePlayer player, TimeSpan cooldown)
     {
         if (player.PlayerState.CurrentState != PlayerState.EnteredWorld
@@ -97,14 +131,35 @@ internal static class MUIdleOnlineAutoMap
             || player.CurrentMap?.Definition is not { } current
             || !(player.Attributes?[Stats.IsMuHelperActive] > 0)
             || player.IsAtSafezone()
-            || MUIdleHuntTracker.GetSettings(player) is not { AutoTravel: true, AutoMapSelection: true, PreferredMap: null } settings)
+            || MUIdleHuntTracker.GetSettings(player) is not { AutoTravel: true } settings
+            || (!settings.AutoMapSelection && settings.PreferredMap is null))
         {
+            // MANUAL stays on its map.
             return;
         }
 
         // A live world boss of the character's level: the rally decides where it goes. A quest errand
         // (accept or hand in at the giver) comes before the map choice too (D19).
         if ((settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(player) is not null) || MUIdleOnlineQuests.Due(player) is not null)
+        {
+            return;
+        }
+
+        // A quest item only one monster drops: to that monster's spawn (its map, then the client walks) -
+        // before the farming map, pinned or AUTO (D19), at most once a minute.
+        if (settings.QuestItemsFirst && MUIdleQuests.MissingItemMonster(player) is { } questMonster)
+        {
+            var step = NextQuestStepUtc.GetValue(player, _ => new StrongBox<DateTime>(DateTime.MinValue));
+            if (DateTime.UtcNow >= step.Value)
+            {
+                step.Value = DateTime.UtcNow.AddMinutes(1);
+                await GoToQuestMonsterAsync(player, current, questMonster).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        if (!settings.AutoMapSelection || settings.PreferredMap is not null)
         {
             return;
         }

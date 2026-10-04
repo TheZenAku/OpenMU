@@ -10,6 +10,9 @@ using MUnique.OpenMU.DataModel.Entities;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Bots;
+using MUnique.OpenMU.GameLogic.NPC;
+using MUnique.OpenMU.GameLogic.Offline;
+using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.GameLogic.PlayerActions.Quests;
 
 /// <summary>
@@ -77,6 +80,45 @@ internal static class MUIdleQuests
             if (have < required.MinimumNumber)
             {
                 return (min, group.MaximumMonsterLevel ?? byte.MaxValue);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets where the hunt goes for a quest item which only one monster drops (Evidence of Strength:
+    /// Hell Maine, Death Beam Knight, Dark Phoenix): a permanent spawn of the monster of the first such
+    /// missing item, on a map the character is on or can warp to, and only a monster it could fight (the
+    /// opt-in boss rule of <see cref="CombatHandler.ExplainUnsafe"/>); <c>null</c> when there is none.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The monster, its map and the middle of its spawn area.</returns>
+    public static (MonsterDefinition Monster, short Map, Point Spot)? MissingItemMonster(Player player)
+    {
+        if (player.SelectedCharacter?.QuestStates.FirstOrDefault(s => s.Group == ClassLine)?.ActiveQuest is not { } active)
+        {
+            return null;
+        }
+
+        var bag = player.Inventory?.Items.ToList() ?? [];
+        foreach (var required in active.RequiredItems)
+        {
+            if (required.DropItemGroup?.Monster is not { } monster
+                || bag.Count(i => Equals(i.Definition, required.Item)) >= required.MinimumNumber
+                || CombatHandler.ExplainUnsafe(player, monster, requireQuickKill: false) is not null)
+            {
+                continue;
+            }
+
+            var spawn = player.GameContext.Configuration.Maps
+                .SelectMany(map => map.MonsterSpawns.Select(area => (Map: map, Area: area)))
+                .Where(x => x.Area.MonsterDefinition == monster && HuntingMapRating.IsPermanentMonsterSpawn(x.Area))
+                .OrderByDescending(x => x.Map == player.CurrentMap?.Definition)
+                .FirstOrDefault(x => x.Map == player.CurrentMap?.Definition || MUIdleHuntMaps.Evaluate(player, x.Map.Number) is { Refusal: null });
+            if (spawn.Area is { } area)
+            {
+                return (monster, spawn.Map.Number, new Point((byte)((area.X1 + area.X2) / 2), (byte)((area.Y1 + area.Y2) / 2)));
             }
         }
 

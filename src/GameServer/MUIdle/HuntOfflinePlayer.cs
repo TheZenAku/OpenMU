@@ -13,6 +13,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Bots;
 using MUnique.OpenMU.GameLogic.MiniGames;
+using MUnique.OpenMU.GameLogic.NPC;
 using MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.Views;
@@ -86,6 +87,35 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         // The combat handler hits the boss first and does not shy away from its long fight.
         this.PriorityTarget = boss?.Monster;
         return boss is { } b ? (b.Definition.MapNumber, b.Monster.Position) : null;
+    }
+
+    /// <summary>
+    /// The rally point of the hunt: a live world boss first (bosses first), else the monster which alone
+    /// drops a missing item of the active class quest (quest items first) - its spawn, and the monster
+    /// itself as the priority target once it stands there.
+    /// </summary>
+    /// <returns>The map and spot, or <c>null</c>.</returns>
+    internal (int Map, Point Spot)? HuntRally()
+    {
+        if (this.Settings.BossesFirst && this.WorldBossRally() is { } boss)
+        {
+            return boss;
+        }
+
+        this.PriorityTarget = null;
+        if (!this.Settings.QuestItemsFirst || MUIdleQuests.MissingItemMonster(this) is not { } target)
+        {
+            return null;
+        }
+
+        if (this.CurrentMap is { } map && map.Definition.Number == target.Map)
+        {
+            this.PriorityTarget = map.GetAttackablesInRange(target.Spot, 30)
+                .OfType<Monster>()
+                .FirstOrDefault(m => m.IsAlive && m.Definition == target.Monster);
+        }
+
+        return (target.Map, target.Spot);
     }
 
     /// <summary>
@@ -183,7 +213,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         PinnedMap = this.Settings.AutoMapSelection ? null : this.Settings.PreferredMap,
         ActivityChanged = (activity, map) => MUIdleHuntTracker.Report(this, MUIdleHuntTracker.FromBot(activity), map),
         BetterProvenMap = this.Settings.AutoMapSelection ? this.Statistics.BetterProvenMap : null,
-        Rally = this.Settings.BossesFirst ? this.WorldBossRally : null,
+        Rally = this.Settings.BossesFirst || this.Settings.QuestItemsFirst ? this.HuntRally : null,
         PreferredMonsterLevels = this.Settings is { AutoMapSelection: true, QuestItemsFirst: true } ? () => MUIdleQuests.MissingItemBand(this) : null,
         // A live world boss of its level comes first (D19): the navigator checks errands before its warps.
         Errand = this.Settings.QuestsAuto

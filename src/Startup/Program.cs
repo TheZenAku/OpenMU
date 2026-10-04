@@ -141,7 +141,7 @@ internal sealed class Program : IDisposable
                 nextStopCheck = DateTime.UtcNow.AddSeconds(1);
                 if (File.Exists(stopFile))
                 {
-                    Log.Information("MUIdle: stop requested by {StopFile}; shutting down.", stopFile);
+                    program._logger.Information("MUIdle: stop requested by {StopFile}; shutting down.", stopFile);
 #pragma warning disable VSTHRD103 // Call async methods when in an async method
                     exitCts.Cancel();
 #pragma warning restore VSTHRD103 // Call async methods when in an async method

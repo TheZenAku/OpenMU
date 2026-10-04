@@ -117,6 +117,25 @@ internal static class MUIdleHuntTracker
     }
 
     /// <summary>
+    /// Whether the player switched HUNT on - its intent, which holds while the client's helper pauses
+    /// (in town, the helper stops itself).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns><c>true</c>, if HUNT is the player's choice now.</returns>
+    public static bool HasHuntIntent(Player player)
+    {
+        if (!Entries.TryGetValue(player, out var entry))
+        {
+            return false;
+        }
+
+        lock (entry)
+        {
+            return entry.HuntIntent;
+        }
+    }
+
+    /// <summary>
     /// Records whether the player switched HUNT on, and reports it.
     /// </summary>
     /// <param name="player">The player.</param>

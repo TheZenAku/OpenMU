@@ -61,7 +61,8 @@ internal static class MUIdleOnlineQuests
         => player.PlayerState.CurrentState == PlayerState.EnteredWorld
            && player.IsAlive
            && player.CurrentMiniGame is null
-           && player.Attributes?[Stats.IsMuHelperActive] > 0
+           // The HUNT intent, not the helper: walked to the giver in town, the client's helper pauses.
+           && (MUIdleHuntTracker.HasHuntIntent(player) || player.Attributes?[Stats.IsMuHelperActive] > 0)
            && MUIdleHuntTracker.GetSettings(player) is { QuestsAuto: true, BossesFirst: var bosses }
            && !(bosses && MUIdleWorldBossPlugIn.LiveBossFor(player) is not null)
             ? MUIdleQuests.ErrandFor(player)

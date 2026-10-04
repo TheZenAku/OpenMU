@@ -157,6 +157,7 @@ internal static class MUIdleOnlineQuests
         var settings = MUIdleHuntTracker.GetSettings(player);
         var band = settings?.QuestItemsFirst == true ? MUIdleQuests.MissingItemBand(player) : null;
         var after = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+        MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling, here.Definition.Name.ValueInNeutralLanguage);
         await MUIdleSessions.SendStateAsync(player, after, resume: true, ground: MUIdleHuntMaps.PickGround(player, here, band)).ConfigureAwait(false);
     }
 }

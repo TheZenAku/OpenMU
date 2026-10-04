@@ -164,7 +164,10 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
         await player.SaveProgressAsync().ConfigureAwait(false);
         MUIdleHuntTracker.SetHuntIntent(player, hunt);
 
-        if (!hunt || settings is not { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned })
+        // A due quest errand goes first (it warps to the giver itself): no detour over the pinned map.
+        if (!hunt
+            || settings is not { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned }
+            || MUIdleOnlineQuests.Due(player) is not null)
         {
             return;
         }

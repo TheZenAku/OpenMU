@@ -224,7 +224,13 @@ internal static class MUIdleHuntTracker
     public static void OnEnteredWorld(Player player)
     {
         // The server's own word on the MU Helper beats the intent: after a warp into town it stops.
+        // Closing an NPC window ends here too; a HUNT paused for the fee stays shown as paused.
         var hunt = player.Attributes?[Stats.IsMuHelperActive] > 0;
+        if (!hunt && MUIdleEconomy.IsPaused(player))
+        {
+            return;
+        }
+
         Report(player, hunt ? HuntActivityKind.Hunting : HuntActivityKind.Idle);
     }
 

@@ -19,7 +19,14 @@ using MUnique.OpenMU.GameServer.RemoteView;
 /// </summary>
 internal static class MUIdleEconomy
 {
-    private static readonly ConditionalWeakTable<Player, StrongBox<bool>> Paused = new();
+    /// <summary>
+    /// How often an online HUNT is asked to go on after its pause before it waits for the player.
+    /// </summary>
+    internal const int ResumeAttempts = 3;
+
+    private static readonly TimeSpan ResumeInterval = TimeSpan.FromMinutes(1);
+
+    private static readonly ConditionalWeakTable<Player, PauseState> Pauses = new();
 
     /// <summary>
     /// Gets the MU Helper fee due per pay interval for the player now (offline: the stage of its
@@ -114,41 +121,138 @@ internal static class MUIdleEconomy
         }
 
         var fee = HelperFee(player);
-        var paused = Paused.GetValue(player, _ => new StrongBox<bool>());
+        var pause = Pauses.GetValue(player, _ => new PauseState());
         var helperOn = player.Attributes?[Stats.IsMuHelperActive] > 0;
-        if (!paused.Value)
+        var now = DateTime.UtcNow;
+        switch (Step(pause, helperOn, player.Money, fee, player.IsAtSafezone(), now))
         {
-            if (fee > 0 && !helperOn && player.Money < fee && !player.IsAtSafezone())
-            {
-                paused.Value = true;
+            case PauseStep.Pause:
                 MUIdleHuntTracker.ReportPaused(player, player.Money, fee);
-                player.GameContext.LoggerFactory.CreateLogger("MUnique.OpenMU.GameServer.MUIdle.Hunt").LogInformation(
-                    "MUIdle hunt {Character}: HUNT paused - {Money} zen, the MU Helper takes {Fee}.", player.Name, player.Money, fee);
-            }
-
-            return;
-        }
-
-        if (helperOn)
-        {
-            paused.Value = false;
-            return;
-        }
-
-        if (player.Money >= fee)
-        {
-            // The money is there again (a sale, the vault, a reward): HUNT goes on by itself.
-            paused.Value = false;
-            MUIdleHuntTracker.Report(player, HuntActivityKind.Hunting);
-            var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
-            await MUIdleSessions.SendStateAsync(player, state, resume: true).ConfigureAwait(false);
-        }
-        else
-        {
-            MUIdleHuntTracker.ReportPaused(player, player.Money, fee);
+                Logger(player).LogInformation("MUIdle hunt {Character}: HUNT paused - {Money} zen, the MU Helper takes {Fee}.", player.Name, player.Money, fee);
+                break;
+            case PauseStep.StillPaused:
+                MUIdleHuntTracker.ReportPaused(player, player.Money, fee);
+                break;
+            case PauseStep.GiveUp:
+                MUIdleHuntTracker.Report(player, HuntActivityKind.Idle);
+                Logger(player).LogInformation("MUIdle hunt {Character}: HUNT did not resume after the pause; it waits for the player.", player.Name);
+                break;
+            case PauseStep.Resume:
+                // The client starts its helper only outside a safezone: in town it walks to a hunting ground first.
+                var ground = player.IsAtSafezone() && player.CurrentMap is { } map ? MUIdleHuntMaps.PickGround(player, map) : null;
+                MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
+                Logger(player).LogInformation(
+                    "MUIdle hunt {Character}: HUNT resumes - {Money} zen (attempt {Attempt}, ground {Ground}).", player.Name, player.Money, pause.Attempts, ground?.ToString() ?? "-");
+                var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+                await MUIdleSessions.SendStateAsync(player, state, resume: true, ground: ground).ConfigureAwait(false);
+                break;
         }
     }
 
+    /// <summary>
+    /// Advances the fee pause of an online HUNT by one check: it pauses when the helper is off and the
+    /// fee cannot be paid outside a safezone (in town the helper stops by itself), stays paused while
+    /// the money is short, then asks the client to go on - once a minute, <see cref="ResumeAttempts"/>
+    /// times - and finally leaves HUNT to the player. A running helper ends the pause.
+    /// </summary>
+    /// <param name="pause">The pause of the player, changed by the step.</param>
+    /// <param name="helperOn">Whether the MU Helper runs.</param>
+    /// <param name="money">The player's Zen.</param>
+    /// <param name="fee">The fee due per pay interval.</param>
+    /// <param name="atSafezone">Whether the player stands in a safezone.</param>
+    /// <param name="now">The time of the check.</param>
+    /// <returns>What to do now.</returns>
+    internal static PauseStep Step(PauseState pause, bool helperOn, long money, long fee, bool atSafezone, DateTime now)
+    {
+        if (helperOn)
+        {
+            pause.Clear();
+            return PauseStep.None;
+        }
+
+        if (!pause.Paused)
+        {
+            if (fee <= 0 || money >= fee || atSafezone)
+            {
+                return PauseStep.None;
+            }
+
+            pause.Paused = true;
+            return PauseStep.Pause;
+        }
+
+        if (money < fee)
+        {
+            return PauseStep.StillPaused;
+        }
+
+        // The money is there again (a sale, the vault, a reward): HUNT goes on by itself.
+        if (now - pause.ResumedUtc < ResumeInterval)
+        {
+            return PauseStep.None;
+        }
+
+        if (pause.Attempts >= ResumeAttempts)
+        {
+            // The client did not start (the player keeps it in town): HUNT waits for the button.
+            pause.Clear();
+            return PauseStep.GiveUp;
+        }
+
+        pause.Attempts++;
+        pause.ResumedUtc = now;
+        return PauseStep.Resume;
+    }
+
+    /// <summary>
+    /// Whether the player's online HUNT is paused for the fee (it waits for the money, or for its resume).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns><c>true</c>, if so.</returns>
+    public static bool IsPaused(Player player) => Pauses.TryGetValue(player, out var pause) && pause.Paused;
+
+    private static ILogger Logger(Player player) => player.GameContext.LoggerFactory.CreateLogger("MUnique.OpenMU.GameServer.MUIdle.Hunt");
+
     private static MuHelperConfiguration? Configuration(Player player)
         => player.GameContext.FeaturePlugIns.GetPlugIn<MuHelperFeaturePlugIn>()?.Configuration;
+
+    /// <summary>
+    /// What one check of the fee pause does.
+    /// </summary>
+    internal enum PauseStep
+    {
+        /// <summary>Nothing to do.</summary>
+        None,
+
+        /// <summary>HUNT pauses now.</summary>
+        Pause,
+
+        /// <summary>HUNT stays paused (the money is still short).</summary>
+        StillPaused,
+
+        /// <summary>The client is asked to resume HUNT.</summary>
+        Resume,
+
+        /// <summary>The resume did not happen: HUNT waits for the player.</summary>
+        GiveUp,
+    }
+
+    /// <summary>
+    /// The fee pause of one player.
+    /// </summary>
+    internal sealed class PauseState
+    {
+        public bool Paused { get; set; }
+
+        public int Attempts { get; set; }
+
+        public DateTime ResumedUtc { get; set; }
+
+        public void Clear()
+        {
+            this.Paused = false;
+            this.Attempts = 0;
+            this.ResumedUtc = default;
+        }
+    }
 }

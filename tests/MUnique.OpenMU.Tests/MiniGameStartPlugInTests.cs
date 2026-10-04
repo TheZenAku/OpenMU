@@ -282,7 +282,17 @@ public class MiniGameStartPlugInTests
         await this._plugIn.StartForTestAsync(state).ConfigureAwait(false);
         Assert.That(notifications, Is.EqualTo(new[] { "Open 2" }));
 
-        Assert.That(game.SkipCurrentWait(), Is.True);
+        // The game's own task enters its waiting phase asynchronously; until it does there is no wait to
+        // skip (SkippableDelay.TrySkip is false). Under the load of the full suite on a small machine the
+        // test sometimes got here first and failed - so it waits for the wait instead of racing it.
+        var skipped = false;
+        var skipDeadline = DateTime.UtcNow.AddSeconds(10);
+        while (!(skipped = game.SkipCurrentWait()) && DateTime.UtcNow < skipDeadline)
+        {
+            await Task.Delay(20).ConfigureAwait(false);
+        }
+
+        Assert.That(skipped, Is.True);
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (game.State == MiniGameState.Open && DateTime.UtcNow < deadline)
         {

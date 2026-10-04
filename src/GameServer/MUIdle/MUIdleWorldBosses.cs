@@ -394,6 +394,16 @@ public sealed class MUIdleWorldBossPlugIn : IPeriodicTaskPlugIn, IAttackableGotH
                 paid ? string.Empty : $" (not paid: {refusal ?? "zen limit"})");
             if (paid)
             {
+                // Saved at once: a crash before the next periodic save must not take the reward back.
+                if (receiver is HuntOfflinePlayer hunter)
+                {
+                    await MUIdleSessions.SaveHunterAsync(hunter).ConfigureAwait(false);
+                }
+                else
+                {
+                    await receiver!.SaveProgressAsync().ConfigureAwait(false);
+                }
+
                 await receiver!.InvokeViewPlugInAsync<IUpdateMoneyPlugIn>(p => p.UpdateMoneyAsync()).ConfigureAwait(false);
                 await Tell(receiver!, $"{fight.Definition.Name}: +{share.Zen:N0} zen ({share.Percent:0.#} % of the damage)", $"{fight.Definition.Name}: +{share.Zen:N0} zen ({share.Percent:0.#} % do dano)").ConfigureAwait(false);
             }

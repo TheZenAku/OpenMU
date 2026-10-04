@@ -218,6 +218,8 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         // A live world boss of its level comes first (D19): the navigator checks errands before its warps.
         SpendingReserve = () => MUIdleEconomy.Reserve(this),
         FundsLow = () => MUIdleEconomy.FundsLow(this),
+        AvoidMap = name => this.Statistics.IsDeadly(name)
+                           || (MUIdleEconomy.FundsLow(this) && this.Statistics.IsLosing(name, MUIdleEconomy.FeePerMinute(this))),
         Errand = this.Settings.QuestsAuto
             ? () => this.Settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(this) is not null ? null : MUIdleQuests.ErrandFor(this)
             : null,

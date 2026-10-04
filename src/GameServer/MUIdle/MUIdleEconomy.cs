@@ -68,6 +68,14 @@ internal static class MUIdleEconomy
     }
 
     /// <summary>
+    /// Gets the MU Helper fee per minute.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The fee per minute.</returns>
+    public static double FeePerMinute(Player player)
+        => HelperFee(player) / Math.Max(1, (Configuration(player)?.PayInterval ?? TimeSpan.FromMinutes(5)).TotalMinutes);
+
+    /// <summary>
     /// Whether the player is short of Zen for its running costs (below the reserve).
     /// </summary>
     /// <param name="player">The player.</param>

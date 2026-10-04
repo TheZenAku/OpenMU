@@ -25,6 +25,12 @@ public sealed class OfflineSessionStatistics
     /// <summary>How much better (experience per minute) a proven map must be to move there.</summary>
     private const double ProvenMargin = 1.25;
 
+    /// <summary>The deaths on a map from which on it can count as deadly (with <see cref="DeadlyDeathsPerHour"/>).</summary>
+    private const int DeadlyDeaths = 3;
+
+    /// <summary>The deaths per hour on a map which make it deadly (seen: 33 in 1 h 46 min on Lost Tower).</summary>
+    private const double DeadlyDeathsPerHour = 2;
+
     private string? _clockMap;
 
     private DateTime _clockUtc;
@@ -240,6 +246,39 @@ public sealed class OfflineSessionStatistics
     }
 
     /// <summary>
+    /// Whether the character dies too often on the map this session (at least <see cref="DeadlyDeaths"/>,
+    /// at <see cref="DeadlyDeathsPerHour"/> or more): repairs, potions and lost experience eat what it earns.
+    /// </summary>
+    /// <param name="map">The map.</param>
+    /// <returns><c>true</c>, if so.</returns>
+    public bool IsDeadly(string? map)
+    {
+        lock (this.MapRates)
+        {
+            return this.MapRates.FirstOrDefault(r => r.Map == map) is { } rate
+                   && rate.Deaths >= DeadlyDeaths
+                   && rate.Deaths * 60 / Math.Max(rate.Minutes, 1) >= DeadlyDeathsPerHour;
+        }
+    }
+
+    /// <summary>
+    /// Whether the map earned less Zen per minute this session (over at least <see cref="MinSampleMinutes"/>)
+    /// than the running costs per minute take.
+    /// </summary>
+    /// <param name="map">The map.</param>
+    /// <param name="costPerMinute">The running costs per minute (the MU Helper fee).</param>
+    /// <returns><c>true</c>, if so.</returns>
+    public bool IsLosing(string? map, double costPerMinute)
+    {
+        lock (this.MapRates)
+        {
+            return costPerMinute > 0
+                   && this.MapRates.FirstOrDefault(r => r.Map == map) is { Minutes: >= MinSampleMinutes } rate
+                   && rate.Zen / rate.Minutes < costPerMinute;
+        }
+    }
+
+    /// <summary>
     /// Gets the visited map which has proven clearly better than the current one: experience per
     /// minute at least <see cref="ProvenMargin"/> times the current map's, both measured over at least
     /// <see cref="MinSampleMinutes"/>. The margin keeps the hunt from bouncing between two similar maps.
@@ -256,8 +295,10 @@ public sealed class OfflineSessionStatistics
                 return null;
             }
 
+            // A map it keeps dying on has proven nothing but its cost.
             var best = this.MapRates
                 .Where(r => r.Map != currentMap && r.Minutes >= MinSampleMinutes)
+                .Where(r => !(r.Deaths >= DeadlyDeaths && r.Deaths * 60 / Math.Max(r.Minutes, 1) >= DeadlyDeathsPerHour))
                 .MaxBy(r => r.ExperiencePerMinute);
             return best is not null && best.ExperiencePerMinute >= current.ExperiencePerMinute * ProvenMargin
                 ? best.Map

@@ -1660,6 +1660,13 @@ internal sealed class BotNavigator : AsyncDisposable
         // ground to earn its way back up, instead of walking between hunting grounds forever.
         var mapIsBarren = DateTime.UtcNow - this._player.LastAttackUtc > BarrenMapDuration;
 
+        // A map the policy says to stay off (deadly, losing money) is left the same way: one step down.
+        if (!mapIsBarren && currentMap is not null && this._policy.AvoidMap?.Invoke(currentMap.Name.ValueInNeutralLanguage) == true)
+        {
+            this._player.Logger.LogDebug("Bot {Character} leaves map {Map}: too costly (deaths or money).", this._player.Name, currentMap.Name);
+            mapIsBarren = true;
+        }
+
         // A rally point (a live world boss): its map on a player's terms, and stay - unless that map
         // turned hostile, then the regular escape below applies.
         if (this._policy.Rally?.Invoke() is { } rally
@@ -2483,6 +2490,8 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private bool IsPermanentMonsterSpawn(MonsterSpawnArea area) => HuntingMapRating.IsPermanentMonsterSpawn(area);
 
+    private bool IsAvoided(GameMapDefinition map) => this._policy.AvoidMap?.Invoke(map.Name.ValueInNeutralLanguage) == true;
+
     /// <summary>
     /// Picks the legally warpable map (other than the current one) with the strongest safe monsters of
     /// a level band, with its warp.
@@ -2552,7 +2561,7 @@ internal sealed class BotNavigator : AsyncDisposable
             }
 
             var best = this.BestSafeLevel(candidate);
-            if (best <= 0 || best >= currentLevel || best <= monsterLevel)
+            if (best <= 0 || best >= currentLevel || best <= monsterLevel || this.IsAvoided(candidate))
             {
                 continue;
             }
@@ -2609,10 +2618,11 @@ internal sealed class BotNavigator : AsyncDisposable
                 continue;
             }
 
-            // A map left as barren a short while ago is no better map (see BarrenMapMemory).
+            // A map left as barren a short while ago is no better map (see BarrenMapMemory); nor one the
+            // policy says to stay off.
             if (!escape
-                && this._barrenUntil.TryGetValue(candidate.Number, out var barrenUntil)
-                && this._timeProvider.GetUtcNow() < barrenUntil)
+                && ((this._barrenUntil.TryGetValue(candidate.Number, out var barrenUntil) && this._timeProvider.GetUtcNow() < barrenUntil)
+                    || this.IsAvoided(candidate)))
             {
                 continue;
             }

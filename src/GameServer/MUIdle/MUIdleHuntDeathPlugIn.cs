@@ -25,6 +25,7 @@ public sealed class MUIdleHuntDeathPlugIn : IAttackableGotKilledPlugIn
         if (killed is RemotePlayer player)
         {
             MUIdleHuntTracker.Report(player, HuntActivityKind.Dead);
+            MUIdleHuntDeaths.Record(player);
         }
 
         return ValueTask.CompletedTask;

@@ -165,10 +165,12 @@ internal static class MUIdleOnlineAutoMap
             return;
         }
 
+        // A map it keeps dying on is left at once, not after the cooldown (D20).
+        var deadlyHere = MUIdleHuntDeaths.IsDeadly(player, current.Number);
         var box = NextCheckUtc.GetValue(player, _ => new StrongBox<DateTime>(DateTime.MinValue));
         var (due, next) = Schedule(box.Value == DateTime.MinValue ? null : box.Value, DateTime.UtcNow, cooldown);
         box.Value = next;
-        if (!due)
+        if (!due && !deadlyHere)
         {
             return;
         }
@@ -177,6 +179,7 @@ internal static class MUIdleOnlineAutoMap
         var reserve = MUIdleEconomy.Reserve(player);
         var options = MUIdleHuntMaps.Options(player)
             .Where(o => o is { Refusal: null, Warp: not null } && o.Map.Number != current.Number && player.Money - o.Fare >= reserve)
+            .Where(o => !MUIdleHuntDeaths.IsDeadly(player, o.Map.Number))
             .ToList();
 
         // The missing item of the class quest drops only from monsters of a band: a map that has them.
@@ -204,6 +207,18 @@ internal static class MUIdleOnlineAutoMap
                 HuntingMapRating.BestSafeLevel(player, current, minimum),
                 options.Select(o => (o, HuntingMapRating.BestSafeLevel(player, o.Map, minimum))));
             target = (floor > 0 ? Pick(floor) : null) ?? Pick(0);
+
+            // Dying here: one step down - the strongest safe map below this one.
+            if (target is null && deadlyHere)
+            {
+                var here = HuntingMapRating.BestSafeLevel(player, current, 0);
+                target = options
+                    .Select(o => (Option: o, Level: HuntingMapRating.BestSafeLevel(player, o.Map, 0)))
+                    .Where(x => x.Level > 0 && (here == 0 || x.Level < here))
+                    .OrderByDescending(x => x.Level)
+                    .Select(x => x.Option)
+                    .FirstOrDefault();
+            }
         }
 
         if (target is not { Warp: { } warp })

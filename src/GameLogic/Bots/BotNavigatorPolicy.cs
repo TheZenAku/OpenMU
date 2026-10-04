@@ -131,6 +131,13 @@ public sealed record BotNavigatorPolicy
     public Func<bool>? FundsLow { get; init; }
 
     /// <summary>
+    /// Gets a judge which, given a map name, says whether the bot should stay off that map for a while
+    /// (it dies too often there, or loses money there): it steps down from it like from a barren map
+    /// and leaves it out of the map choice. <c>null</c>: no such judge.
+    /// </summary>
+    public Func<string, bool>? AvoidMap { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

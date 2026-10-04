@@ -72,6 +72,45 @@ public class OfflineSessionStatisticsTest
         Assert.That(Measured(("Devias", 12, 1_000), ("Atlans", 3, 90_000)).BetterProvenMap("Devias"), Is.Null);
     }
 
+    /// <summary>Dying three times in an hour makes a map deadly; it is then no proven better map (D20).</summary>
+    [Test]
+    public void FrequentDeathsMakeAMapDeadly()
+    {
+        var statistics = Measured(("Devias", 12, 12_000), ("Lost Tower", 60, 120_000));
+        Assert.That(statistics.BetterProvenMap("Devias"), Is.EqualTo("Lost Tower"));
+
+        statistics.Record("Lost Tower", deaths: 3, at: Start.AddMinutes(72));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(statistics.IsDeadly("Lost Tower"), Is.True);
+            Assert.That(statistics.IsDeadly("Devias"), Is.False);
+            Assert.That(statistics.BetterProvenMap("Devias"), Is.Null);
+        });
+    }
+
+    /// <summary>A map earning less zen per minute than the running costs is losing; a short sample is not judged.</summary>
+    [Test]
+    public void LessZenThanTheCostsIsLosing()
+    {
+        var statistics = new OfflineSessionStatistics();
+        statistics.Record("Lost Tower", at: Start);
+        for (var minute = 1; minute <= 12; minute++)
+        {
+            statistics.Record("Lost Tower", zen: 1_000, at: Start.AddMinutes(minute));
+        }
+
+        statistics.Record("Atlans", at: Start.AddMinutes(13));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(statistics.IsLosing("Lost Tower", 1_520), Is.True); // 1 000 zen/min against level 380 fees
+            Assert.That(statistics.IsLosing("Lost Tower", 500), Is.False);
+            Assert.That(statistics.IsLosing("Lost Tower", 0), Is.False);
+            Assert.That(statistics.IsLosing("Atlans", 1_520), Is.False);
+        });
+    }
+
     /// <summary>The rates survive the JSON round trip of the periodic saves.</summary>
     [Test]
     public void RatesSurviveSaving()

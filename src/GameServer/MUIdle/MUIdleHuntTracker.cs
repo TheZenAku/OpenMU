@@ -138,6 +138,50 @@ internal static class MUIdleHuntTracker
     }
 
     /// <summary>
+    /// Sets, or clears with a <c>null</c> reason, a note the HUD shows under the activity: why HUNT
+    /// does not do what it would (no safer map, a fare it cannot pay, a quest waiting for zen). One per source.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="source">Who sets the note (<c>map</c>, <c>quest</c>).</param>
+    /// <param name="reason">The reason, a text key of the client; <c>null</c> clears the note.</param>
+    /// <param name="have">The player's amount (Zen), if the reason has one.</param>
+    /// <param name="need">The needed amount, if the reason has one.</param>
+    public static void SetNote(Player player, string source, string? reason, long have = 0, long need = 0)
+    {
+        var entry = Entries.GetValue(player, _ => new Entry());
+        var note = reason is null ? null : new Note(reason, have, need);
+        Note? old;
+        lock (entry)
+        {
+            entry.Notes.TryGetValue(source, out old);
+            if (old == note)
+            {
+                return;
+            }
+
+            if (note is null)
+            {
+                entry.Notes.Remove(source);
+            }
+            else
+            {
+                entry.Notes[source] = note;
+            }
+        }
+
+        if (note is not null && note.Reason != old?.Reason)
+        {
+            player.GameContext.LoggerFactory.CreateLogger(LogCategory).LogInformation(
+                "MUIdle hunt {Character}: note {Reason} ({Have} of {Need}).", player.Name, note.Reason, have, need);
+        }
+
+        if (player is RemotePlayer { Connection.Connected: true } remotePlayer)
+        {
+            _ = SendAsync(remotePlayer);
+        }
+    }
+
+    /// <summary>
     /// Whether the player switched HUNT on - its intent, which holds while the client's helper pauses
     /// (in town, the helper stops itself).
     /// </summary>
@@ -167,6 +211,11 @@ internal static class MUIdleHuntTracker
         lock (entry)
         {
             entry.HuntIntent = hunt;
+            if (!hunt)
+            {
+                // The notes explain what HUNT does not do; MANUAL needs none.
+                entry.Notes.Clear();
+            }
         }
 
         Report(player, hunt ? HuntActivityKind.Hunting : HuntActivityKind.Idle);
@@ -302,6 +351,7 @@ internal static class MUIdleHuntTracker
                 map = entry.Map ?? player.CurrentMap?.Definition.Name.ValueInNeutralLanguage,
                 pinnedReason = entry.PinnedRefusal is { } refusal ? RefusalName(refusal) : null,
                 pause = entry.Kind == HuntActivityKind.Paused ? new { reason = "zen", have = entry.PauseMoney, need = entry.PauseFee } : null,
+                notes = entry.Notes.Values.Select(n => new { reason = n.Reason, have = n.Have, need = n.Need }).ToList(),
             };
         }
     }
@@ -356,8 +406,12 @@ internal static class MUIdleHuntTracker
         }
     }
 
+    private sealed record Note(string Reason, long Have, long Need);
+
     private sealed class Entry
     {
+        public Dictionary<string, Note> Notes { get; } = new();
+
         public long PauseMoney { get; set; }
 
         public long PauseFee { get; set; }

@@ -23,6 +23,8 @@ using MUnique.OpenMU.Pathfinding;
 /// </summary>
 internal static class MUIdleOnlineAutoMap
 {
+    private const string MapNote = "map";
+
     private static readonly WarpAction Warp = new();
 
     private static readonly ConditionalWeakTable<Player, StrongBox<DateTime>> NextCheckUtc = new();
@@ -123,6 +125,43 @@ internal static class MUIdleOnlineAutoMap
         await Warp.WarpToAsync(player, warp).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The map the AUTO choice goes to from the open options: a map with monsters of the quest item band,
+    /// else the strongest safe map that pays more (<see cref="Choose{T}"/>); dying here, one step down.
+    /// </summary>
+    private static HuntMapOption? PickTarget(Player player, GameMapDefinition current, List<HuntMapOption> options, (int Min, int Max)? band, bool deadlyHere)
+    {
+        if (band is { } wanted)
+        {
+            return options
+                .Select(o => (Option: o, Level: HuntingMapRating.BestSafeLevelInBand(player, o.Map, wanted.Min, wanted.Max)))
+                .Where(x => x.Level > 0)
+                .OrderByDescending(x => x.Level)
+                .Select(x => x.Option)
+                .FirstOrDefault();
+        }
+
+        // A mastered character earns only above the master experience floor: maps judged by what pays first.
+        var floor = HuntingMapRating.MasterExperienceFloor(player);
+        HuntMapOption? Pick(int minimum) => Choose(
+            HuntingMapRating.BestSafeLevel(player, current, minimum),
+            options.Select(o => (o, HuntingMapRating.BestSafeLevel(player, o.Map, minimum))));
+        var target = (floor > 0 ? Pick(floor) : null) ?? Pick(0);
+        if (target is not null || !deadlyHere)
+        {
+            return target;
+        }
+
+        // Dying here: one step down - the strongest safe map below this one.
+        var here = HuntingMapRating.BestSafeLevel(player, current, 0);
+        return options
+            .Select(o => (Option: o, Level: HuntingMapRating.BestSafeLevel(player, o.Map, 0)))
+            .Where(x => x.Level > 0 && (here == 0 || x.Level < here))
+            .OrderByDescending(x => x.Level)
+            .Select(x => x.Option)
+            .FirstOrDefault();
+    }
+
     private static async ValueTask TryMoveAsync(RemotePlayer player, TimeSpan cooldown)
     {
         if (player.PlayerState.CurrentState != PlayerState.EnteredWorld
@@ -162,6 +201,7 @@ internal static class MUIdleOnlineAutoMap
 
         if (!settings.AutoMapSelection || settings.PreferredMap is not null)
         {
+            MUIdleHuntTracker.SetNote(player, MapNote, null);
             return;
         }
 
@@ -175,56 +215,39 @@ internal static class MUIdleOnlineAutoMap
             return;
         }
 
-        // A map change leaves the HUNT reserve for the MU Helper fee (D20).
-        var reserve = MUIdleEconomy.Reserve(player);
-        var options = MUIdleHuntMaps.Options(player)
-            .Where(o => o is { Refusal: null, Warp: not null } && o.Map.Number != current.Number && player.Money - o.Fare >= reserve)
+        var open = MUIdleHuntMaps.Options(player)
+            .Where(o => o is { Refusal: null, Warp: not null } && o.Map.Number != current.Number)
             .Where(o => !MUIdleHuntDeaths.IsDeadly(player, o.Map.Number))
             .ToList();
 
         // The missing item of the class quest drops only from monsters of a band: a map that has them.
         var band = settings.QuestItemsFirst ? MUIdleQuests.MissingItemBand(player) : null;
-        HuntMapOption? target;
-        if (band is { } wanted)
+        if (band is { } wanted && HuntingMapRating.BestSafeLevelInBand(player, current, wanted.Min, wanted.Max) > 0)
         {
-            if (HuntingMapRating.BestSafeLevelInBand(player, current, wanted.Min, wanted.Max) > 0)
-            {
-                return;
-            }
-
-            target = options
-                .Select(o => (Option: o, Level: HuntingMapRating.BestSafeLevelInBand(player, o.Map, wanted.Min, wanted.Max)))
-                .Where(x => x.Level > 0)
-                .OrderByDescending(x => x.Level)
-                .Select(x => x.Option)
-                .FirstOrDefault();
-        }
-        else
-        {
-            // A mastered character earns only above the master experience floor: maps judged by what pays first.
-            var floor = HuntingMapRating.MasterExperienceFloor(player);
-            HuntMapOption? Pick(int minimum) => Choose(
-                HuntingMapRating.BestSafeLevel(player, current, minimum),
-                options.Select(o => (o, HuntingMapRating.BestSafeLevel(player, o.Map, minimum))));
-            target = (floor > 0 ? Pick(floor) : null) ?? Pick(0);
-
-            // Dying here: one step down - the strongest safe map below this one.
-            if (target is null && deadlyHere)
-            {
-                var here = HuntingMapRating.BestSafeLevel(player, current, 0);
-                target = options
-                    .Select(o => (Option: o, Level: HuntingMapRating.BestSafeLevel(player, o.Map, 0)))
-                    .Where(x => x.Level > 0 && (here == 0 || x.Level < here))
-                    .OrderByDescending(x => x.Level)
-                    .Select(x => x.Option)
-                    .FirstOrDefault();
-            }
-        }
-
-        if (target is not { Warp: { } warp })
-        {
+            MUIdleHuntTracker.SetNote(player, MapNote, null);
             return;
         }
+
+        // A map change leaves the HUNT reserve for the MU Helper fee (D20).
+        var reserve = MUIdleEconomy.Reserve(player);
+        var target = PickTarget(player, current, open.Where(o => player.Money - o.Fare >= reserve).ToList(), band, deadlyHere);
+        if (target is not { Warp: { } warp })
+        {
+            // Why it stays, on the HUD: the map it would go to costs more than the zen above the reserve,
+            // or it keeps dying here and nothing safer is open.
+            if (PickTarget(player, current, open, band, deadlyHere) is { } unaffordable)
+            {
+                MUIdleHuntTracker.SetNote(player, MapNote, "noFare", player.Money, unaffordable.Fare + reserve);
+            }
+            else
+            {
+                MUIdleHuntTracker.SetNote(player, MapNote, deadlyHere ? "noSafeMap" : null);
+            }
+
+            return;
+        }
+
+        MUIdleHuntTracker.SetNote(player, MapNote, null);
 
         player.Logger.LogInformation(
             "MUIdle: HUNT (AUTO) moves {Character} from {From} (safe monster level {Here}) to {To} (safe monster level {There}).",

@@ -254,6 +254,25 @@ internal static class MUIdleQuests
     }
 
     /// <summary>
+    /// The zen the next class quest waits for, when the character has its level but not the start fee,
+    /// the fare and the HUNT reserve (<see cref="AcceptCost"/>); <c>null</c> otherwise.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The player's zen and the zen needed, or <c>null</c>.</returns>
+    public static (long Have, long Need)? ZenShort(Player player)
+    {
+        if (Resolve(player) is not { Giver: not null, Stand.Map: { } map, Active: false } line
+            || line.Quest.RequiresClientAction
+            || player.Level < line.Quest.MinimumCharacterLevel)
+        {
+            return null;
+        }
+
+        var need = AcceptCost(player, line.Quest, map);
+        return player.Money < need ? (player.Money, need) : null;
+    }
+
+    /// <summary>
     /// The zen accepting the quest needs from here: the start fee, the fare to the giver's map (a character
     /// with exactly the fee would arrive short of it after the warp), and the HUNT reserve (D20).
     /// </summary>

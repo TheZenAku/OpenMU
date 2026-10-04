@@ -43,6 +43,11 @@ internal static class MUIdleOnlineQuests
         {
             try
             {
+                // The next quest only waits for zen: the HUD says how much (D20).
+                var shortOf = MUIdleHuntTracker.HasHuntIntent(player) && MUIdleHuntTracker.GetSettings(player) is { QuestsAuto: true }
+                    ? MUIdleQuests.ZenShort(player)
+                    : null;
+                MUIdleHuntTracker.SetNote(player, "quest", shortOf is null ? null : "questZen", shortOf?.Have ?? 0, shortOf?.Need ?? 0);
                 await TryStepAsync(player).ConfigureAwait(false);
             }
             catch (Exception ex)

@@ -125,6 +125,10 @@ internal sealed class Program : IDisposable
         };
 
         using var program = new Program();
+
+        // MUIdle: a failed debug assertion is logged instead of ending the process (MUIdleTraceListener).
+        MUnique.OpenMU.GameServer.MUIdle.MUIdleTraceListener.Install((message, detail) =>
+            program._logger.Error("Assertion failed: {Message}{NewLine}{Detail}", message, Environment.NewLine, detail));
         await program.InitializeAsync(args).ConfigureAwait(false);
 
         // MUIdle: a stop request file (MUIDLE_STOP_FILE) ends the process like a confirmed CTRL+C. Unlike

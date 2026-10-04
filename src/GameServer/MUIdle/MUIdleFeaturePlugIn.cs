@@ -53,7 +53,18 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
             // Restored once per process, by the first game server which gets here.
             if (configuration.RestoreOfflineHuntersOnStartup && Interlocked.Exchange(ref _restored, 1) == 0)
             {
-                await MUIdleSessions.RestoreOfflineHuntersAsync(gameContext).ConfigureAwait(false);
+                try
+                {
+                    await MUIdleSessions.RestoreOfflineHuntersAsync(gameContext).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // The list of hunters could not be read (a busy database at startup): again on the next
+                    // tick - the markers stay in the database until a hunter is restored.
+                    Interlocked.Exchange(ref _restored, 0);
+                    gameContext.LoggerFactory.CreateLogger<MUIdleFeaturePlugIn>().LogWarning(ex, "MUIdle: restoring the offline hunters failed; trying again.");
+                    return;
+                }
             }
 
             var now = DateTime.UtcNow;

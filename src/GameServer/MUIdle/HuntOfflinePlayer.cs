@@ -216,6 +216,8 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         Rally = this.Settings.BossesFirst || this.Settings.QuestItemsFirst ? this.HuntRally : null,
         PreferredMonsterLevels = this.Settings is { AutoMapSelection: true, QuestItemsFirst: true } ? () => MUIdleQuests.MissingItemBand(this) : null,
         // A live world boss of its level comes first (D19): the navigator checks errands before its warps.
+        SpendingReserve = () => MUIdleEconomy.Reserve(this),
+        FundsLow = () => MUIdleEconomy.FundsLow(this),
         Errand = this.Settings.QuestsAuto
             ? () => this.Settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(this) is not null ? null : MUIdleQuests.ErrandFor(this)
             : null,

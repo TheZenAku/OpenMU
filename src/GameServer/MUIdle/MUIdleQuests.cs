@@ -254,15 +254,15 @@ internal static class MUIdleQuests
     }
 
     /// <summary>
-    /// The zen accepting the quest takes from here: the start fee plus the fare to the giver's map - a
-    /// character with exactly the fee would arrive short of it after the warp.
+    /// The zen accepting the quest needs from here: the start fee, the fare to the giver's map (a character
+    /// with exactly the fee would arrive short of it after the warp), and the HUNT reserve (D20).
     /// </summary>
     private static long AcceptCost(Player player, QuestDefinition quest, GameMapDefinition? giverMap)
     {
         var fare = giverMap is null || player.CurrentMap?.Definition == giverMap
             ? 0
             : MUIdleHuntMaps.Evaluate(player, giverMap.Number)?.Fare ?? 0;
-        return (long)quest.RequiredStartMoney + fare;
+        return (long)quest.RequiredStartMoney + fare + MUIdleEconomy.Reserve(player);
     }
 
     private static void Log(Player player, string what, string quest, MonsterDefinition giver)

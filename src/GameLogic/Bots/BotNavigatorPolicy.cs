@@ -119,6 +119,18 @@ public sealed record BotNavigatorPolicy
     public Func<BotErrand?>? Errand { get; init; }
 
     /// <summary>
+    /// Gets the Zen the bot keeps for its running costs (e.g. the MU Helper fee): a warp which would
+    /// leave less than this is not affordable. <c>null</c>: no reserve (bots).
+    /// </summary>
+    public Func<long>? SpendingReserve { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the bot is short of Zen for its running costs: with junk to
+    /// sell it goes to a merchant even without slot pressure. <c>null</c>: never.
+    /// </summary>
+    public Func<bool>? FundsLow { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

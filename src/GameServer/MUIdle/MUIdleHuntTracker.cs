@@ -44,6 +44,9 @@ internal enum HuntActivityKind
 
     /// <summary>On the way to a quest giver, or at it (accepting or handing in a quest).</summary>
     Quest,
+
+    /// <summary>HUNT is on but cannot go on (the MU Helper fee cannot be paid).</summary>
+    Paused,
 }
 
 /// <summary>
@@ -114,6 +117,24 @@ internal static class MUIdleHuntTracker
         {
             return entry.Settings;
         }
+    }
+
+    /// <summary>
+    /// Reports HUNT paused because the MU Helper fee cannot be paid, with the money and the fee.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="money">The player's Zen.</param>
+    /// <param name="fee">The fee.</param>
+    public static void ReportPaused(Player player, long money, long fee)
+    {
+        var entry = Entries.GetValue(player, _ => new Entry());
+        lock (entry)
+        {
+            entry.PauseMoney = money;
+            entry.PauseFee = fee;
+        }
+
+        Report(player, HuntActivityKind.Paused);
     }
 
     /// <summary>
@@ -274,6 +295,7 @@ internal static class MUIdleHuntTracker
                 kind = Name(entry.Kind),
                 map = entry.Map ?? player.CurrentMap?.Definition.Name.ValueInNeutralLanguage,
                 pinnedReason = entry.PinnedRefusal is { } refusal ? RefusalName(refusal) : null,
+                pause = entry.Kind == HuntActivityKind.Paused ? new { reason = "zen", have = entry.PauseMoney, need = entry.PauseFee } : null,
             };
         }
     }
@@ -301,6 +323,7 @@ internal static class MUIdleHuntTracker
         HuntActivityKind.Dead => "dead",
         HuntActivityKind.Event => "event",
         HuntActivityKind.Quest => "quest",
+        HuntActivityKind.Paused => "paused",
         _ => "idle",
     };
 
@@ -329,6 +352,10 @@ internal static class MUIdleHuntTracker
 
     private sealed class Entry
     {
+        public long PauseMoney { get; set; }
+
+        public long PauseFee { get; set; }
+
         public HuntActivityKind Kind { get; set; } = HuntActivityKind.Idle;
 
         public string? Map { get; set; }

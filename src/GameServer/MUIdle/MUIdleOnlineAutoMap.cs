@@ -107,7 +107,8 @@ internal static class MUIdleOnlineAutoMap
         }
 
         if (await player.GameContext.GetMapAsync((ushort)target.Map).ConfigureAwait(false) is not { } map
-            || MUIdleHuntMaps.ReachingWarp(player, map, target.Spot) is not { } warp)
+            || MUIdleHuntMaps.ReachingWarp(player, map, target.Spot) is not { } warp
+            || player.Money - warp.Costs < MUIdleEconomy.Reserve(player))
         {
             return;
         }
@@ -172,8 +173,10 @@ internal static class MUIdleOnlineAutoMap
             return;
         }
 
+        // A map change leaves the HUNT reserve for the MU Helper fee (D20).
+        var reserve = MUIdleEconomy.Reserve(player);
         var options = MUIdleHuntMaps.Options(player)
-            .Where(o => o is { Refusal: null, Warp: not null } && o.Map.Number != current.Number)
+            .Where(o => o is { Refusal: null, Warp: not null } && o.Map.Number != current.Number && player.Money - o.Fare >= reserve)
             .ToList();
 
         // The missing item of the class quest drops only from monsters of a band: a map that has them.

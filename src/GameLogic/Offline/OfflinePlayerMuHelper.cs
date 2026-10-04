@@ -187,6 +187,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
 
         if (!await this._zenHandler.DeductZenAsync().ConfigureAwait(false))
         {
+            this._player.StopReason = "zen";
             if (this._player.Account?.LoginName is { } loginName)
             {
                 await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);

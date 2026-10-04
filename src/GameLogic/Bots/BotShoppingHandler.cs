@@ -75,6 +75,12 @@ internal static class BotShoppingHandler
             return true;
         }
 
+        // Short of Zen for the running costs (the MU Helper fee): the junk is money, so sell it now.
+        if (policy.SellJunk && policy.FundsLow?.Invoke() == true && GetSellableJunk(player, inventory, policy).Count > 0)
+        {
+            return true;
+        }
+
         // A potion trip needs something to pay with: Zen, or loot to turn into Zen once it is there.
         // A broke bot buys nothing, so the trigger still stands when it gets back - and it sets off
         // again, and again, and never hunts, which is the only way it could have earned the money.

@@ -38,6 +38,13 @@ public class MUIdleConfiguration
     public int OnlineAutoMapMinutes { get; set; } = 10;
 
     /// <summary>
+    /// Gets or sets the minutes of MU Helper fees HUNT keeps in reserve: map changes and quest fees leave
+    /// at least this much (D20). 0 = no reserve.
+    /// </summary>
+    [Display(Name = "HUNT zen reserve (minutes of MU Helper fees)", Description = "Map changes and quest fees of HUNT leave at least the MU Helper fees of this many minutes; short of it, the hunt sells its junk first. 0 = no reserve.")]
+    public int HuntReserveMinutes { get; set; } = 30;
+
+    /// <summary>
     /// Gets or sets the maximum duration of an offline hunting session in minutes. 0 means unlimited.
     /// </summary>
     [Display(Name = "Maximum offline minutes", Description = "Maximum duration of an offline hunting session in minutes; 0 = unlimited.")]

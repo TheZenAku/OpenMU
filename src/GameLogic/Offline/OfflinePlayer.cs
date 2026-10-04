@@ -105,6 +105,12 @@ public class OfflinePlayer : Player
     public IAttackable? PriorityTarget { get; set; }
 
     /// <summary>
+    /// Gets or sets why the session stopped itself (e.g. <c>"zen"</c>: the MU Helper fee could not be
+    /// paid); <c>null</c> when it was stopped from outside.
+    /// </summary>
+    public string? StopReason { get; set; }
+
+    /// <summary>
     /// Gets what the combat of the session does now (diagnostics, see <see cref="CombatHandler.Telemetry"/>);
     /// <c>null</c> before the session runs.
     /// </summary>

@@ -180,6 +180,29 @@ public class CombatHandlerTests
     }
 
     /// <summary>
+    /// Regression (live Dark Phoenix 2026-10-03 19:40): a Soul Master with 360 health was sent to a boss
+    /// hitting 492 and died every three minutes. A boss whose single hit exceeds the whole health is
+    /// refused even as a priority target - so it is no rally point (MUIdleWorldBossPlugIn.LiveBossFor).
+    /// </summary>
+    [Test]
+    public async ValueTask ExplainUnsafe_PriorityTarget_RefusesAHitAboveTheHealth()
+    {
+        var player = await this.CreateOfflinePlayerAsync().ConfigureAwait(false);
+        player.Attributes![Stats.Level] = 380;
+        await player.SkillList!.AddLearnedSkillAsync(new TestSkill { AttackDamage = 20 }).ConfigureAwait(false);
+        var health = Math.Max(1f, player.Attributes[Stats.MaximumHealth]);
+        var damage = player.Attributes[Stats.DefensePvm] + (health * 492f / 360f);
+        var boss = new MonsterDefinition { Number = 30002, ObjectKind = NpcObjectKind.Monster };
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.Level, Value = 108 });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MinimumPhysBaseDmg, Value = damage });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumPhysBaseDmg, Value = damage });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumHealth, Value = 95_000 });
+        boss.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.AttackRatePvm, Value = 100_000 });
+
+        Assert.That(CombatHandler.ExplainUnsafe(player, boss, requireQuickKill: false), Does.StartWith("a hit takes"));
+    }
+
+    /// <summary>
     /// A world boss the session was sent for (a priority target) may hit harder than a regular target:
     /// a hit of about a quarter of the health is refused for a regular target and accepted for it.
     /// </summary>

@@ -238,7 +238,7 @@ internal static class MUIdleSessions
         }
 
         hunter.Statistics.EndedUtc = DateTime.UtcNow;
-        hunter.Statistics.EndReason = hunter.EndReason ?? (hunter.IsAlive ? "returned" : "died");
+        hunter.Statistics.EndReason = hunter.EndReason ?? hunter.StopReason ?? (hunter.IsAlive ? "returned" : "died");
         state.OfflineSince = null;
         state.OfflineStatisticsJson = hunter.Statistics.ToJson();
         hunter.Logger.LogInformation(

@@ -2403,7 +2403,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// than chosen and then refused by <see cref="WarpAction"/>.
     /// </summary>
     /// <param name="warp">The warp to pay for.</param>
-    private bool CanAffordWarp(WarpInfo warp) => this._player.Money >= warp.Costs;
+    private bool CanAffordWarp(WarpInfo warp) => this._player.Money - warp.Costs >= (this._policy.SpendingReserve?.Invoke() ?? 0);
 
     /// <summary>
     /// Tells the policy's <see cref="BotNavigatorPolicy.ActivityChanged"/> what the bot starts doing.

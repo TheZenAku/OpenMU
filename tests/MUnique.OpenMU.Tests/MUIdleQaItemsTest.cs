@@ -18,15 +18,30 @@ public class MUIdleQaItemsTest
     [Test]
     public void ARequestListsEveryItem()
     {
-        var request = MUIdleQaItems.Parse("""{"account":"test300","character":"test300Dl","items":[{"group":13,"number":31,"level":1},{"group":14,"number":13,"count":2}]}""");
+        var request = MUIdleQaItems.Parse("""{"account":"test300","character":"test300Dl","items":[{"group":13,"number":31,"level":1},{"group":14,"number":13,"count":2},{"group":2,"number":6,"level":4,"option":1,"luck":true}]}""");
 
         Assert.That(request, Is.Not.Null);
         Assert.Multiple(() =>
         {
             Assert.That(request!.Account, Is.EqualTo("test300"));
             Assert.That(request.Character, Is.EqualTo("test300Dl"));
-            Assert.That(request.Items, Is.EqualTo(new List<(byte, short, byte)> { (13, 31, 1), (14, 13, 0), (14, 13, 0) }));
+            Assert.That(request.Items, Is.EqualTo(new List<MUIdleQaItems.QaItem>
+            {
+                new(13, 31, 1),
+                new(14, 13, 0),
+                new(14, 13, 0),
+                new(2, 6, 4, 1, true),
+            }));
         });
+    }
+
+    /// <summary>
+    /// An additional option above level 4 is no request.
+    /// </summary>
+    [Test]
+    public void AnOptionAboveFourIsRefused()
+    {
+        Assert.That(MUIdleQaItems.Parse("""{"account":"a","character":"c","items":[{"group":2,"number":6,"option":5}]}"""), Is.Null);
     }
 
     /// <summary>

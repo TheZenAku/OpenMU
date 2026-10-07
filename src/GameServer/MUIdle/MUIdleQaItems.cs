@@ -8,6 +8,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel;
+using MUnique.OpenMU.DataModel.Configuration.Items;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Offline;
@@ -46,7 +47,7 @@ internal static class MUIdleQaItems
                 return null;
             }
 
-            var items = new List<(byte Group, short Number, byte Level)>();
+            var items = new List<QaItem>();
             foreach (var entry in list.EnumerateArray())
             {
                 if (!entry.TryGetProperty("group", out var g) || !g.TryGetByte(out var group)
@@ -56,13 +57,15 @@ internal static class MUIdleQaItems
                 }
 
                 var level = entry.TryGetProperty("level", out var l) && l.TryGetByte(out var itemLevel) ? itemLevel : (byte)0;
+                var option = entry.TryGetProperty("option", out var o) && o.TryGetByte(out var optionLevel) ? optionLevel : (byte)0;
+                var luck = entry.TryGetProperty("luck", out var u) && u.ValueKind == JsonValueKind.True;
                 var count = entry.TryGetProperty("count", out var k) && k.TryGetInt32(out var itemCount) ? itemCount : 1;
-                if (level > 15 || count is < 1 or > MaxItems)
+                if (level > 15 || option > 4 || count is < 1 or > MaxItems)
                 {
                     return null;
                 }
 
-                items.AddRange(Enumerable.Repeat((group, number, level), count));
+                items.AddRange(Enumerable.Repeat(new QaItem(group, number, level, option, luck), count));
             }
 
             return items.Count is > 0 and <= MaxItems ? new Request(account, character, items) : null;
@@ -125,18 +128,36 @@ internal static class MUIdleQaItems
         }
 
         var given = new List<string>();
-        foreach (var (group, number, level) in request.Items)
+        foreach (var wanted in request.Items)
         {
-            if (gameContext.Configuration.Items.FirstOrDefault(d => d.Group == group && d.Number == number) is not { } definition)
+            if (gameContext.Configuration.Items.FirstOrDefault(d => d.Group == wanted.Group && d.Number == wanted.Number) is not { } definition)
             {
-                logger.LogWarning("QA items: no item {Group}/{Number}.", group, number);
+                logger.LogWarning("QA items: no item {Group}/{Number}.", wanted.Group, wanted.Number);
                 continue;
             }
 
             var item = player.PersistenceContext.CreateNew<Item>();
             item.Definition = definition;
-            item.Level = Math.Min(level, definition.MaximumItemLevel);
+            item.Level = Math.Min(wanted.Level, definition.MaximumItemLevel);
             item.Durability = item.IsStackable() ? 1 : definition.Durability;
+
+            // Only the options the item definition offers (as a drop or the bots' gear gets them).
+            var options = definition.PossibleItemOptions.SelectMany(o => o.PossibleOptions).ToList();
+            if (wanted.Luck && options.FirstOrDefault(o => o.OptionType == ItemOptionTypes.Luck) is { } luck)
+            {
+                var link = player.PersistenceContext.CreateNew<ItemOptionLink>();
+                link.ItemOption = luck;
+                item.ItemOptions.Add(link);
+            }
+
+            if (wanted.Option > 0 && options.FirstOrDefault(o => o.OptionType == ItemOptionTypes.Option) is { } additional)
+            {
+                var link = player.PersistenceContext.CreateNew<ItemOptionLink>();
+                link.ItemOption = additional;
+                link.Level = wanted.Option;
+                item.ItemOptions.Add(link);
+            }
+
             if (!await inventory.AddItemAsync(item).ConfigureAwait(false))
             {
                 await player.PersistenceContext.DeleteAsync(item).ConfigureAwait(false);
@@ -145,7 +166,7 @@ internal static class MUIdleQaItems
             }
 
             await player.InvokeViewPlugInAsync<IItemAppearPlugIn>(p => p.ItemAppearAsync(item)).ConfigureAwait(false);
-            given.Add($"{definition.Name.ValueInNeutralLanguage} +{item.Level}");
+            given.Add($"{definition.Name.ValueInNeutralLanguage} +{item.Level}{(item.ItemOptions.Count > 0 ? $" ({item.ItemOptions.Count} option(s))" : string.Empty)}");
         }
 
         if (given.Count > 0)
@@ -161,6 +182,16 @@ internal static class MUIdleQaItems
     /// </summary>
     /// <param name="Account">The QA account.</param>
     /// <param name="Character">The character, in the game.</param>
-    /// <param name="Items">The items: group, number and level, one entry each.</param>
-    internal sealed record Request(string Account, string Character, IReadOnlyList<(byte Group, short Number, byte Level)> Items);
+    /// <param name="Items">The items, one entry each.</param>
+    internal sealed record Request(string Account, string Character, IReadOnlyList<QaItem> Items);
+
+    /// <summary>
+    /// One item of a request.
+    /// </summary>
+    /// <param name="Group">The item group.</param>
+    /// <param name="Number">The item number.</param>
+    /// <param name="Level">The item level (0-15).</param>
+    /// <param name="Option">The level of the additional option (0: none, 1-4), if the item offers one.</param>
+    /// <param name="Luck">Whether it gets luck, if the item offers it.</param>
+    internal sealed record QaItem(byte Group, short Number, byte Level, byte Option = 0, bool Luck = false);
 }

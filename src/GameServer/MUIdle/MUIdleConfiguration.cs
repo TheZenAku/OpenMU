@@ -45,6 +45,13 @@ public class MUIdleConfiguration
     public int HuntReserveMinutes { get; set; } = 30;
 
     /// <summary>
+    /// Gets or sets a value indicating whether every character knows all the skills its class learns from
+    /// scrolls, orbs and parchments, from its first entry on, instead of buying them (D22).
+    /// </summary>
+    [Display(Name = "Class skills from the start", Description = "Characters know every skill their class learns from scrolls, orbs and parchments as soon as they enter the game - no skill items to buy. A skill's own requirements (e.g. energy) still apply when casting.")]
+    public bool GrantClassSkills { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the maximum duration of an offline hunting session in minutes. 0 means unlimited.
     /// </summary>
     [Display(Name = "Maximum offline minutes", Description = "Maximum duration of an offline hunting session in minutes; 0 = unlimited.")]

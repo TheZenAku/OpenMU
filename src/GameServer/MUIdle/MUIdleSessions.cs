@@ -267,6 +267,14 @@ internal static class MUIdleSessions
             hunter.UpdateEndValues();
             var state = await GetOrCreateStateAsync(hunter, character).ConfigureAwait(false);
             state.OfflineStatisticsJson = hunter.Statistics.ToJson();
+            if (hunter.PlayerState.CurrentState == PlayerState.EnteredWorld)
+            {
+                // A running offline hunt carries its marker, so a restart brings it back. Once it went
+                // missing while the hunter ran (2026-10-07, test0Dl after a login/logout: not reproduced),
+                // and the next restart dropped the hunt; each save puts it back.
+                state.HuntActive = true;
+                state.OfflineSince ??= hunter.Statistics.StartedUtc;
+            }
         }).ConfigureAwait(false);
         await hunter.SaveProgressAsync().ConfigureAwait(false);
     }

@@ -112,14 +112,15 @@ internal static class MUIdleQaItems
             return;
         }
 
+        // In the world, also with an NPC window open (the trainer, a shop); not in a trade.
         var player = (await gameContext.GetPlayersAsync().ConfigureAwait(false)).FirstOrDefault(p =>
             p is not OfflinePlayer
-            && p.PlayerState.CurrentState == PlayerState.EnteredWorld
+            && (p.PlayerState.CurrentState == PlayerState.EnteredWorld || p.PlayerState.CurrentState == PlayerState.NpcDialogOpened)
             && string.Equals(p.Account?.LoginName, request.Account, StringComparison.OrdinalIgnoreCase)
             && string.Equals(p.SelectedCharacter?.Name, request.Character, StringComparison.Ordinal));
         if (player?.Inventory is not { } inventory)
         {
-            logger.LogWarning("QA items: {Account}/{Character} is not in the game - log the character in first.", request.Account, request.Character);
+            logger.LogWarning("QA items: {Account}/{Character} is not in the world (logged out, or in a trade) - log it in first.", request.Account, request.Character);
             return;
         }
 

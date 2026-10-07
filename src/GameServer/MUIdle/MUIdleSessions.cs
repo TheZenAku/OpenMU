@@ -296,6 +296,29 @@ internal static class MUIdleSessions
             return;
         }
 
+        // Respawned after a death with HUNT on: the client's helper stops in the respawn safezone, so
+        // HUNT goes back to a hunting ground by itself, as the offline hunter does - unless the map is
+        // one the character keeps dying on and the player chose it (pinned or MANUAL; AUTO moves on).
+        if (MUIdleHuntTracker.WasDead(player)
+            && MUIdleHuntTracker.HasHuntIntent(player)
+            && player.IsAtSafezone()
+            && player.SelectedCharacter is { } hunter
+            && player.CurrentMap is { } here)
+        {
+            if (MUIdleHuntTracker.GetSettings(player) is not { AutoMapSelection: true }
+                && MUIdleHuntDeaths.IsDeadly(player, (short)here.Definition.Number))
+            {
+                MUIdleHuntTracker.OnEnteredWorld(player);
+                MUIdleHuntTracker.SetNote(player, MUIdleHuntTracker.DeathNote, "deadlyHere");
+                return;
+            }
+
+            MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
+            var state = await GetOrCreateStateAsync(player, hunter).ConfigureAwait(false);
+            await SendStateAsync(player, state, resume: true, ground: MUIdleHuntMaps.PickGround(player, here)).ConfigureAwait(false);
+            return;
+        }
+
         MUIdleHuntTracker.OnEnteredWorld(player);
     }
 

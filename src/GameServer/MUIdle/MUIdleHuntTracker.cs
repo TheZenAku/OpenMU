@@ -67,6 +67,11 @@ internal static class MUIdleHuntTracker
     private static readonly ConditionalWeakTable<Player, Entry> Entries = new();
 
     /// <summary>The log category of the hunt transitions (Debug, enabled in appsettings.json).</summary>
+    /// <summary>
+    /// The note source of a HUNT held back after a death (see <see cref="MUIdleSessions.OnMapEnteredAsync"/>).
+    /// </summary>
+    internal const string DeathNote = "death";
+
     private const string LogCategory = "MUnique.OpenMU.GameServer.MUIdle.Hunt";
 
     /// <summary>
@@ -201,6 +206,24 @@ internal static class MUIdleHuntTracker
     }
 
     /// <summary>
+    /// Whether the last thing the hunt reported was the character's death (it is respawning now).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns><c>true</c>, if so.</returns>
+    public static bool WasDead(Player player)
+    {
+        if (!Entries.TryGetValue(player, out var entry))
+        {
+            return false;
+        }
+
+        lock (entry)
+        {
+            return entry.Kind == HuntActivityKind.Dead;
+        }
+    }
+
+    /// <summary>
     /// Records whether the player switched HUNT on, and reports it.
     /// </summary>
     /// <param name="player">The player.</param>
@@ -216,6 +239,9 @@ internal static class MUIdleHuntTracker
                 // The notes explain what HUNT does not do; MANUAL needs none.
                 entry.Notes.Clear();
             }
+
+            // Switched by the player: it decided after the death that held HUNT back.
+            entry.Notes.Remove(DeathNote);
         }
 
         // The player's own switch (or the resume) ends a fee pause; still short of the fee, the

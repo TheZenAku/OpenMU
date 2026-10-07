@@ -165,28 +165,15 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
         MUIdleHuntTracker.SetHuntIntent(player, hunt);
 
         // A due quest errand goes first (it warps to the giver itself): no detour over the pinned map.
-        if (!hunt
-            || settings is not { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned }
-            || MUIdleOnlineQuests.Due(player) is not null)
+        if (!hunt || MUIdleOnlineQuests.Due(player) is not null || player.CurrentMap is not { } current)
         {
-            return;
-        }
-
-        // Already on the pinned map, but in town: walk out to a hunting ground, then HUNT.
-        if (player.CurrentMap is { } current && current.Definition.Number == pinned)
-        {
-            if (player.IsAtSafezone())
-            {
-                MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
-                var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
-                await MUIdleSessions.SendStateAsync(player, state, resume: true, ground: MUIdleHuntMaps.PickGround(player, current)).ConfigureAwait(false);
-            }
-
             return;
         }
 
         // The same rule as offline: with a pinned map elsewhere, HUNT starts by going there.
-        if (MUIdleHuntMaps.Evaluate(player, pinned) is { Warp: { } warp } target)
+        if (settings is { AutoTravel: true, AutoMapSelection: false, PreferredMap: { } pinned }
+            && current.Definition.Number != pinned
+            && MUIdleHuntMaps.Evaluate(player, pinned) is { Warp: { } warp } target)
         {
             MUIdleHuntTracker.Report(player, HuntActivityKind.Warping, target.Map.Name.ValueInNeutralLanguage);
 
@@ -194,6 +181,16 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
             // map change completes when the client loaded the map; MUIdleSessions.OnMapEnteredAsync goes on.
             MUIdleHuntTracker.ExpectPinnedArrival(player, pinned);
             await Warp.WarpToAsync(player, warp).ConfigureAwait(false);
+            return;
+        }
+
+        // Hunting on this map (AUTO, MANUAL, the pinned one, or a pinned map out of reach), but in town:
+        // the client's helper does not start in a safezone, so HUNT first walks to a hunting ground here.
+        if (player.IsAtSafezone())
+        {
+            MUIdleHuntTracker.Report(player, HuntActivityKind.Travelling);
+            var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+            await MUIdleSessions.SendStateAsync(player, state, resume: true, ground: MUIdleHuntMaps.PickGround(player, current)).ConfigureAwait(false);
         }
     }
 }

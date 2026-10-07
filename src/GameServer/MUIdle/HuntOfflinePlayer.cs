@@ -168,6 +168,11 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         {
             this.Statistics.Record(this.CurrentMapName, zen: current - previous);
         }
+        else if (current < previous)
+        {
+            // What hunting here costs (repairs, potions, the fee) counts against the map (D20).
+            this.Statistics.Record(this.CurrentMapName, spent: previous - current);
+        }
     }
 
     /// <inheritdoc />
@@ -226,6 +231,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         SpendingReserve = () => MUIdleEconomy.Reserve(this),
         FundsLow = () => MUIdleEconomy.FundsLow(this),
         AvoidMap = name => this.Statistics.IsDeadly(name)
+                           || this.Statistics.IsUnsustainable(name, this.Money, MUIdleEconomy.Reserve(this))
                            || (MUIdleEconomy.FundsLow(this) && this.Statistics.IsLosing(name, MUIdleEconomy.FeePerMinute(this))),
         Errand = this.Settings.QuestsAuto
             ? () => this.Settings.BossesFirst && MUIdleWorldBossPlugIn.LiveBossFor(this) is not null ? null : MUIdleQuests.ErrandFor(this)

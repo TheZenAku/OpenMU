@@ -111,6 +111,40 @@ public class OfflineSessionStatisticsTest
         });
     }
 
+    /// <summary>
+    /// A map whose repairs cost more than it earns (test300Dl in Devias: 22 K earned, 1.58 M spent on
+    /// 4 repairs in 10 minutes) drains a character whose money would fall below the reserve within an
+    /// hour; a rich one, or a map that pays, is not drained.
+    /// </summary>
+    [Test]
+    public void RepairsAboveTheEarningsMakeAMapUnsustainable()
+    {
+        var statistics = new OfflineSessionStatistics();
+        statistics.Record("Devias", at: Start);
+        for (var minute = 1; minute <= 11; minute++)
+        {
+            statistics.Record("Devias", zen: 2_000, at: Start.AddMinutes(minute));
+        }
+
+        statistics.Record("Devias", spent: 1_580_000, at: Start.AddMinutes(11));
+        statistics.Record("Lost Tower", at: Start.AddMinutes(12));
+        for (var minute = 13; minute <= 24; minute++)
+        {
+            statistics.Record("Lost Tower", zen: 20_000, at: Start.AddMinutes(minute));
+        }
+
+        statistics.Record("Lost Tower", spent: 100_000, at: Start.AddMinutes(24));
+        statistics.Record("Atlans", at: Start.AddMinutes(25));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(statistics.IsUnsustainable("Devias", 211_443, 45_600), Is.True);
+            Assert.That(statistics.IsUnsustainable("Devias", 100_000_000, 45_600), Is.False, "rich enough for an hour");
+            Assert.That(statistics.IsUnsustainable("Lost Tower", 211_443, 45_600), Is.False, "pays for its repairs");
+            Assert.That(statistics.IsUnsustainable("Atlans", 0, 45_600), Is.False, "not measured");
+        });
+    }
+
     /// <summary>The rates survive the JSON round trip of the periodic saves.</summary>
     [Test]
     public void RatesSurviveSaving()

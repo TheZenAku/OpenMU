@@ -31,6 +31,12 @@ public sealed class OfflineSessionStatistics
     /// <summary>The deaths per hour on a map which make it deadly (seen: 33 in 1 h 46 min on Lost Tower).</summary>
     private const double DeadlyDeathsPerHour = 2;
 
+    /// <summary>
+    /// How far ahead a map's measured zen loss is projected (seen: test300Dl in Devias, 22 K earned and
+    /// 1.58 M spent on 4 repairs in 10 minutes).
+    /// </summary>
+    private const double SustainMinutes = 60;
+
     private string? _clockMap;
 
     private DateTime _clockUtc;
@@ -220,7 +226,8 @@ public sealed class OfflineSessionStatistics
     /// <param name="kills">Kills just made.</param>
     /// <param name="deaths">Deaths just suffered.</param>
     /// <param name="at">The time of the record; now when <c>null</c> (tests pass their own).</param>
-    public void Record(string? map, long experience = 0, long zen = 0, long kills = 0, long deaths = 0, DateTime? at = null)
+    /// <param name="spent">Zen just spent (repairs, potions, the MU Helper fee, warps).</param>
+    public void Record(string? map, long experience = 0, long zen = 0, long kills = 0, long deaths = 0, DateTime? at = null, long spent = 0)
     {
         lock (this.MapRates)
         {
@@ -240,8 +247,33 @@ public sealed class OfflineSessionStatistics
             var rate = this.RateOf(map);
             rate.Experience += experience;
             rate.Zen += zen;
+            rate.Spent += spent;
             rate.Kills += kills;
             rate.Deaths += deaths;
+        }
+    }
+
+    /// <summary>
+    /// Whether hunting on the map drains the character (D20): measured over at least
+    /// <see cref="MinSampleMinutes"/>, it spends more zen there than it earns (repairs of high-end gear
+    /// cost millions), and at that rate the money would fall below the reserve within
+    /// <see cref="SustainMinutes"/>.
+    /// </summary>
+    /// <param name="map">The map.</param>
+    /// <param name="money">The character's zen now.</param>
+    /// <param name="reserve">The zen HUNT keeps (the MU Helper fee reserve).</param>
+    /// <returns><c>true</c>, if so.</returns>
+    public bool IsUnsustainable(string? map, long money, long reserve)
+    {
+        lock (this.MapRates)
+        {
+            if (this.MapRates.FirstOrDefault(r => r.Map == map) is not { Minutes: >= MinSampleMinutes } rate)
+            {
+                return false;
+            }
+
+            var netPerMinute = (rate.Zen - rate.Spent) / rate.Minutes;
+            return netPerMinute < 0 && money + (netPerMinute * SustainMinutes) < reserve;
         }
     }
 
@@ -335,6 +367,9 @@ public sealed class MapRate
 
     /// <summary>Gets or sets the zen earned there (pickups and sales; spending is not subtracted).</summary>
     public long Zen { get; set; }
+
+    /// <summary>Gets or sets the zen spent there (repairs, potions, the MU Helper fee, warps).</summary>
+    public long Spent { get; set; }
 
     /// <summary>Gets or sets the kills made there.</summary>
     public long Kills { get; set; }

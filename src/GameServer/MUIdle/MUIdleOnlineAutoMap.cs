@@ -25,6 +25,8 @@ internal static class MUIdleOnlineAutoMap
 {
     private const string MapNote = "map";
 
+    private const string QuestMonsterNote = "questMonster";
+
     private static readonly WarpAction Warp = new();
 
     private static readonly ConditionalWeakTable<Player, StrongBox<DateTime>> NextCheckUtc = new();
@@ -187,13 +189,18 @@ internal static class MUIdleOnlineAutoMap
 
         // A quest item only one monster drops: to that monster's spawn (its map, then the client walks) -
         // before the farming map, pinned or AUTO (D19), at most once a minute.
-        if (settings.QuestItemsFirst && MUIdleQuests.MissingItemMonster(player) is { } questMonster)
+        // Not on a map the character keeps dying on (3 deaths in 30 minutes, D20): back to farming,
+        // and the HUD says why - else every respawn would walk it into the same death.
+        var questMonster = settings.QuestItemsFirst ? MUIdleQuests.MissingItemMonster(player) : null;
+        var questMonsterDeadly = questMonster is { } wantedMonster && MUIdleHuntDeaths.IsDeadly(player, wantedMonster.Map);
+        MUIdleHuntTracker.SetNote(player, QuestMonsterNote, questMonsterDeadly ? "questMonsterDeadly" : null);
+        if (questMonster is { } monster && !questMonsterDeadly)
         {
             var step = NextQuestStepUtc.GetValue(player, _ => new StrongBox<DateTime>(DateTime.MinValue));
             if (DateTime.UtcNow >= step.Value)
             {
                 step.Value = DateTime.UtcNow.AddMinutes(1);
-                await GoToQuestMonsterAsync(player, current, questMonster).ConfigureAwait(false);
+                await GoToQuestMonsterAsync(player, current, monster).ConfigureAwait(false);
             }
 
             return;

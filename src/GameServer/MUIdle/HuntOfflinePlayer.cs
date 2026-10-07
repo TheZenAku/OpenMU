@@ -109,6 +109,12 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
             return null;
         }
 
+        // Not to a map it keeps dying on (as the map choice avoids it): back to farming meanwhile.
+        if (this.Statistics.IsDeadly(this.GameContext.Configuration.Maps.FirstOrDefault(m => m.Number == target.Map)?.Name.ValueInNeutralLanguage))
+        {
+            return null;
+        }
+
         if (this.CurrentMap is { } map && map.Definition.Number == target.Map)
         {
             this.PriorityTarget = map.GetAttackablesInRange(target.Spot, 30)

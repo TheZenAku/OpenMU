@@ -19,6 +19,7 @@ using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.GameLogic.Views.Character;
 using MUnique.OpenMU.GameLogic.Views.Inventory;
+using MUnique.OpenMU.GameLogic.Views.MuHelper;
 using MUnique.OpenMU.GameLogic.Views.World;
 using MUnique.OpenMU.GameServer.RemoteView.MuHelper;
 using MUnique.OpenMU.Pathfinding;
@@ -244,7 +245,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
     /// </summary>
     private sealed class TelemetryViewPlugInContainer : ICustomPlugInContainer<IViewPlugIn>,
         IAddExperiencePlugIn, IUpdateMoneyPlugIn, IItemAppearPlugIn, IItemDurabilityChangedPlugIn, IMapChangePlugIn,
-        IShowMiniGameEnterResultPlugIn
+        IShowMiniGameEnterResultPlugIn, IMuHelperStatusUpdatePlugIn
     {
         private readonly HuntOfflinePlayer _player;
         private readonly ICustomPlugInContainer<IViewPlugIn> _inner;
@@ -299,6 +300,20 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         {
             this._player.OnMoneyChanged();
             return ValueTask.CompletedTask;
+        }
+
+        public ValueTask StartAsync()
+            => this._inner.GetPlugIn<IMuHelperStatusUpdatePlugIn>()?.StartAsync() ?? ValueTask.CompletedTask;
+
+        public ValueTask StopAsync()
+            => this._inner.GetPlugIn<IMuHelperStatusUpdatePlugIn>()?.StopAsync() ?? ValueTask.CompletedTask;
+
+        public ValueTask ConsumeMoneyAsync(uint money)
+        {
+            // The MU Helper fee (ZenConsumptionHandler) sends no money update: recorded now as spent,
+            // not netted into the next zen pickup.
+            this._player.OnMoneyChanged();
+            return this._inner.GetPlugIn<IMuHelperStatusUpdatePlugIn>()?.ConsumeMoneyAsync(money) ?? ValueTask.CompletedTask;
         }
 
         public ValueTask ItemAppearAsync(Item newItem)

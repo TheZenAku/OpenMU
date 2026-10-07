@@ -7,6 +7,7 @@ namespace MUnique.OpenMU.GameServer.MUIdle;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
+using MUnique.OpenMU.GameLogic.NPC;
 using MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameLogic.PlayerActions;
 using MUnique.OpenMU.Pathfinding;
@@ -208,6 +209,14 @@ internal static class MUIdleHuntMaps
         var wanted = band is { } b ? safe.Where(x => x.Level >= b.Min && x.Level <= b.Max).ToList() : [];
         var pick = wanted.Count > 0 ? wanted.MaxBy(x => x.Level) : safe.Count > 0 ? safe.MaxBy(x => x.Level) : areas.MinBy(x => x.Level);
         var area = pick.Area;
+
+        // Where monsters of that kind are now: a large area (Devias: half the map) has an empty centre,
+        // and the helper only fights what is within its few tiles (test300Dl stood idle at 64,186).
+        if (LiveCluster(player, map, area) is { } cluster)
+        {
+            return cluster;
+        }
+
         int centerX = (area.X1 + area.X2) / 2, centerY = (area.Y1 + area.Y2) / 2;
         var terrain = map.Terrain;
         Point? best = null;
@@ -226,6 +235,30 @@ internal static class MUIdleHuntMaps
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// The position of a live monster of the area's kind with the most of its kind around it (6 tiles),
+    /// the nearest to the player among equals; <c>null</c> when none of them lives now.
+    /// </summary>
+    private static Point? LiveCluster(Player player, GameMap map, MonsterSpawnArea area)
+    {
+        var center = new Point((byte)((area.X1 + area.X2) / 2), (byte)((area.Y1 + area.Y2) / 2));
+        var radius = (Math.Max(area.X2 - area.X1, area.Y2 - area.Y1) / 2) + 1;
+        var live = map.GetAttackablesInRange(center, radius)
+            .OfType<Monster>()
+            .Where(m => m.IsAlive && m.Definition == area.MonsterDefinition && !map.Terrain.SafezoneMap[m.Position.X, m.Position.Y])
+            .Select(m => m.Position)
+            .ToList();
+        if (live.Count == 0)
+        {
+            return null;
+        }
+
+        return live
+            .OrderByDescending(p => live.Count(q => Math.Abs(q.X - p.X) <= 6 && Math.Abs(q.Y - p.Y) <= 6))
+            .ThenBy(p => p.EuclideanDistanceTo(player.Position))
+            .First();
     }
 
     private static int MonsterLevel(MonsterDefinition definition)

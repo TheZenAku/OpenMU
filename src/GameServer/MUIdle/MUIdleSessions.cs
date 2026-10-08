@@ -82,18 +82,31 @@ internal static class MUIdleSessions
     }
 
     /// <summary>
-    /// Whether the hunt of an online player would go on offline if it left now.
+    /// Whether the hunt of an online player would go on offline if it left now. HUNT switched on goes
+    /// on wherever the character stands: in town HUNT walks out to a ground (D21) and the offline
+    /// hunter does the same - the client's helper pauses there, so its flag says nothing (seen: test0Dl
+    /// respawned in Devias on 10-08, left while HUNT walked it out, and no offline hunt followed). The
+    /// original's helper without HUNT only goes on outside the safezone, where it does something.
     /// </summary>
     /// <param name="player">The player.</param>
     /// <param name="configuration">The MUIdle configuration.</param>
     /// <returns><c>true</c>, if it would.</returns>
     internal static bool CanContinueOffline(Player player, MUIdleConfiguration configuration)
-        => player.Attributes?[Stats.IsMuHelperActive] > 0
-           && configuration.ContinueHuntingOnDisconnect
+        => configuration.ContinueHuntingOnDisconnect
            && player.IsAlive
            && player.CurrentMap is not null
            && player.CurrentMiniGame is null
-           && !player.IsAtSafezone();
+           && HuntGoesOn(MUIdleHuntTracker.HasHuntIntent(player), player.Attributes?[Stats.IsMuHelperActive] > 0, player.IsAtSafezone());
+
+    /// <summary>
+    /// The hunt part of <see cref="CanContinueOffline(Player, MUIdleConfiguration)"/>.
+    /// </summary>
+    /// <param name="huntIntent">Whether the player switched HUNT on.</param>
+    /// <param name="helperActive">Whether the client's helper runs.</param>
+    /// <param name="inSafezone">Whether the character stands in a safezone.</param>
+    /// <returns><c>true</c>, if the hunt goes on offline.</returns>
+    internal static bool HuntGoesOn(bool huntIntent, bool helperActive, bool inSafezone)
+        => huntIntent || (helperActive && !inSafezone);
 
     private static OfflineSessionStatistics MarkContinuesOffline(Player player, MUIdleCharacterState state)
     {
@@ -124,7 +137,7 @@ internal static class MUIdleSessions
             return;
         }
 
-        var helperRunning = player.Attributes?[Stats.IsMuHelperActive] > 0;
+        var helperRunning = player.Attributes?[Stats.IsMuHelperActive] > 0 || MUIdleHuntTracker.HasHuntIntent(player);
         var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
         state.HuntActive = helperRunning;
 

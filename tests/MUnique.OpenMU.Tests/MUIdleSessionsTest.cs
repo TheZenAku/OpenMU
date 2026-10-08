@@ -35,4 +35,21 @@ public class MUIdleSessionsTest
             Assert.That(disabled, Is.False);
         });
     }
+
+    /// <summary>
+    /// HUNT switched on goes on offline even in town (where the client's helper pauses and HUNT walks
+    /// out); the original's helper alone only outside the safezone; nothing without either.
+    /// </summary>
+    [Test]
+    public void HuntIntentGoesOnEvenInTown()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(MUIdleSessions.HuntGoesOn(huntIntent: true, helperActive: false, inSafezone: true), Is.True);
+            Assert.That(MUIdleSessions.HuntGoesOn(huntIntent: true, helperActive: true, inSafezone: false), Is.True);
+            Assert.That(MUIdleSessions.HuntGoesOn(huntIntent: false, helperActive: true, inSafezone: false), Is.True);
+            Assert.That(MUIdleSessions.HuntGoesOn(huntIntent: false, helperActive: true, inSafezone: true), Is.False);
+            Assert.That(MUIdleSessions.HuntGoesOn(huntIntent: false, helperActive: false, inSafezone: false), Is.False);
+        });
+    }
 }

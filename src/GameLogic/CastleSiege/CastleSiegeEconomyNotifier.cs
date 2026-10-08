@@ -18,6 +18,13 @@ internal static class CastleSiegeEconomyNotifier
     /// <param name="player">The player.</param>
     internal static async ValueTask SynchronizePlayerAsync(CastleSiegeContext context, Player player)
     {
+        // MUIdle: a player entering the world before the siege data is loaded (offline hunters restored at
+        // startup) got a NullReferenceException here, and its entry failed; no tax to send yet.
+        if (context.SiegeData is null)
+        {
+            return;
+        }
+
         await SendTaxRateAsync(context, player, CastleSiegeTaxType.ChaosMachine).ConfigureAwait(false);
         await SendTaxRateAsync(context, player, CastleSiegeTaxType.Store).ConfigureAwait(false);
     }

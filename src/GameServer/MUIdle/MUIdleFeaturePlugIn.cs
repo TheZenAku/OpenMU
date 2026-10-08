@@ -22,7 +22,14 @@ using MUnique.OpenMU.PlugIns;
 [Guid("6B0C9E2A-3D1F-4E8A-9C55-1A7F2B8D4E01")]
 public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupportCustomConfiguration<MUIdleConfiguration>, ISupportDefaultCustomConfiguration
 {
+    /// <summary>
+    /// How often the restore runs again for hunters whose start failed (one try per tick).
+    /// </summary>
+    private const int MaxRestoreRetries = 8;
+
     private static int _restored;
+
+    private static int _restoreRetries;
 
     private readonly ConcurrentDictionary<GameContext, ServerState> _states = new();
 
@@ -55,7 +62,13 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
             {
                 try
                 {
-                    await MUIdleSessions.RestoreOfflineHuntersAsync(gameContext).ConfigureAwait(false);
+                    // A hunter whose start failed (seen: Castle Siege not loaded yet at startup) gets a few
+                    // more tries; the hunters which did start are skipped by the next try.
+                    if (await MUIdleSessions.RestoreOfflineHuntersAsync(gameContext).ConfigureAwait(false) > 0
+                        && Interlocked.Increment(ref _restoreRetries) <= MaxRestoreRetries)
+                    {
+                        Interlocked.Exchange(ref _restored, 0);
+                    }
                 }
                 catch (Exception ex)
                 {

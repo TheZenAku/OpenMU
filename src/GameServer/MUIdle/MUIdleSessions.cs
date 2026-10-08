@@ -455,7 +455,8 @@ internal static class MUIdleSessions
     /// Restores the offline hunters which were hunting when the server stopped.
     /// </summary>
     /// <param name="gameContext">The game context.</param>
-    public static async ValueTask RestoreOfflineHuntersAsync(IGameContext gameContext)
+    /// <returns>The number of hunters which could not be started (worth another try a bit later).</returns>
+    public static async ValueTask<int> RestoreOfflineHuntersAsync(IGameContext gameContext)
     {
         var logger = gameContext.LoggerFactory.CreateLogger(typeof(MUIdleSessions));
         IReadOnlyList<(string LoginName, string CharacterName)> hunters;
@@ -464,24 +465,43 @@ internal static class MUIdleSessions
             hunters = await context.GetMUIdleOfflineHuntersAsync().ConfigureAwait(false);
         }
 
+        var restored = 0;
+        var failed = 0;
         foreach (var (loginName, characterName) in hunters)
         {
+            // Already hunting (an earlier try started it): never a second hunter for the account.
+            if (gameContext.OfflinePlayerManager.OfflinePlayers.Any(p => string.Equals(p.AccountLoginName, loginName, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
             try
             {
                 // The statistics and settings are read again by the hunter's own context below.
                 var (settings, statistics) = await LoadSessionAsync(gameContext, loginName, characterName).ConfigureAwait(false);
-                await StartHunterAsync(gameContext, loginName, characterName, settings, statistics).ConfigureAwait(false);
+                if (await StartHunterAsync(gameContext, loginName, characterName, settings, statistics).ConfigureAwait(false) is not null)
+                {
+                    restored++;
+                }
+                else if (!await IsAccountOnlineAsync(gameContext, loginName).ConfigureAwait(false))
+                {
+                    // Not because its owner is back: the start failed (e.g. a plugin not ready at startup).
+                    failed++;
+                }
             }
             catch (Exception ex)
             {
+                failed++;
                 logger.LogError(ex, "MUIdle: could not restore the offline hunt of {Character}.", characterName);
             }
         }
 
         if (hunters.Count > 0)
         {
-            logger.LogInformation("MUIdle: restored {Count} offline hunter(s).", hunters.Count);
+            logger.LogInformation("MUIdle: restored {Restored} of {Count} offline hunter(s), {Failed} failed.", restored, hunters.Count, failed);
         }
+
+        return failed;
     }
 
     private static async ValueTask<(MUIdleSettings Settings, OfflineSessionStatistics Statistics)> LoadSessionAsync(IGameContext gameContext, string loginName, string characterName)

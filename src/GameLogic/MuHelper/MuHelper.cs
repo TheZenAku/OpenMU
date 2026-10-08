@@ -79,7 +79,10 @@ public class MuHelper : AsyncDisposable
         }
 
         await this._player.InvokeViewPlugInAsync<IMuHelperStatusUpdatePlugIn>(p => p.StartAsync()).ConfigureAwait(false);
-        await this._player.InvokeViewPlugInAsync<IMuHelperStatusUpdatePlugIn>(p => p.ConsumeMoneyAsync((uint)requiredMoney)).ConfigureAwait(false);
+        if (requiredMoney > 0)
+        {
+            await this._player.InvokeViewPlugInAsync<IMuHelperStatusUpdatePlugIn>(p => p.ConsumeMoneyAsync((uint)requiredMoney)).ConfigureAwait(false);
+        }
 
         this._player.Attributes?.AddElement(ActiveElement, Stats.IsMuHelperActive);
         this._stopCts?.Dispose();
@@ -168,7 +171,14 @@ public class MuHelper : AsyncDisposable
     private async ValueTask CollectAsync()
     {
         var amount = this.CalculateRequiredMoney();
-        if (amount > 0 && this._player.TryRemoveMoney(amount))
+        if (amount <= 0)
+        {
+            // MUIdle (D29): a free helper (no cost per stage) keeps running; this stopped it at the first
+            // pay interval.
+            return;
+        }
+
+        if (this._player.TryRemoveMoney(amount))
         {
             await this._player.InvokeViewPlugInAsync<IMuHelperStatusUpdatePlugIn>(p => p.ConsumeMoneyAsync((uint)amount)).ConfigureAwait(false);
         }

@@ -48,6 +48,9 @@ internal static class MUIdlePackets
     /// <summary>Client to server: preview a mix of the items in the crafting dialog (<c>{"mixType":11}</c>).</summary>
     public const byte RequestMixPreviewSubCode = 0x15;
 
+    /// <summary>Client to server: split pieces off a stack in the inventory (<c>{"slot":14,"amount":5}</c>).</summary>
+    public const byte SplitStackSubCode = 0x16;
+
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;
 

@@ -39,8 +39,10 @@ public class ItemStackAction
             return;
         }
 
-        var jewels = player.Inventory.Items.Where(item => item.Definition == mix.SingleJewel).Take(stackSize).ToList();
-        if (jewels.Count == stackSize)
+        // MUIdle: jewels stack (MUIdleStackSizesPlugInSeason6), so they are counted and taken by pieces -
+        // the smallest stacks first; a single jewel is one piece.
+        var jewels = player.Inventory.Items.Where(item => item.Definition == mix.SingleJewel).OrderBy(item => item.Durability).ToList();
+        if (jewels.Sum(PiecesOf) >= stackSize)
         {
             var fee = GetCombineFee(stackSize);
             if (!player.TryRemoveMoney(fee))
@@ -49,8 +51,24 @@ public class ItemStackAction
                 return;
             }
 
+            var remaining = (int)stackSize;
             foreach (var jewel in jewels)
             {
+                if (remaining == 0)
+                {
+                    break;
+                }
+
+                var pieces = PiecesOf(jewel);
+                if (pieces > remaining)
+                {
+                    jewel.Durability -= remaining;
+                    remaining = 0;
+                    await player.InvokeViewPlugInAsync<IItemDurabilityChangedPlugIn>(p => p.ItemDurabilityChangedAsync(jewel, false)).ConfigureAwait(false);
+                    break;
+                }
+
+                remaining -= pieces;
                 await player.Inventory.RemoveItemAsync(jewel).ConfigureAwait(false);
                 await player.PersistenceContext.DeleteAsync(jewel).ConfigureAwait(false);
                 await player.InvokeViewPlugInAsync<IItemRemovedPlugIn>(p => p.RemoveItemAsync(jewel.ItemSlot)).ConfigureAwait(false);
@@ -111,8 +129,11 @@ public class ItemStackAction
 
         byte pieces = (byte)((stacked.Level + 1) * 10);
 
-        var freeSlots = player.Inventory!.FreeSlots.Take(pieces).ToList();
-        if (freeSlots.Count < pieces)
+        // MUIdle: one stack of the pieces when the jewel stacks that far, else the original's single jewels.
+        var asOneStack = mix.SingleJewel is { ItemSlot: null } single && single.Durability >= pieces;
+        var slotsNeeded = asOneStack ? 1 : pieces;
+        var freeSlots = player.Inventory!.FreeSlots.Take(slotsNeeded).ToList();
+        if (freeSlots.Count < slotsNeeded)
         {
             await player.ShowLocalizedBlueMessageAsync(nameof(PlayerMessage.InventoryNotEnoughSpace)).ConfigureAwait(false);
             return;
@@ -125,7 +146,7 @@ public class ItemStackAction
         {
             var jewel = player.PersistenceContext.CreateNew<Item>();
             jewel.Definition = mix.SingleJewel;
-            jewel.Durability = 1;
+            jewel.Durability = asOneStack ? pieces : 1;
             jewel.ItemSlot = freeSlot;
             await player.Inventory.AddItemAsync(freeSlot, jewel).ConfigureAwait(false);
             await player.InvokeViewPlugInAsync<IItemAppearPlugIn>(p => p.ItemAppearAsync(jewel)).ConfigureAwait(false);
@@ -135,6 +156,8 @@ public class ItemStackAction
     }
 
     private static int GetCombineFee(byte stackSize) => (stackSize / 10) * CombineFeePerTen;
+
+    private static int PiecesOf(Item jewel) => Math.Max(1, (int)jewel.Durability);
 
     private bool IsCorrectNpcOpened(Player player)
     {

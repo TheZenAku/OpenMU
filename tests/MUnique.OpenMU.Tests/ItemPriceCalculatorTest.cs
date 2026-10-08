@@ -38,6 +38,23 @@ public class ItemPriceCalculatorTest
     }
 
     /// <summary>
+    /// Tests that a jewel is priced by its pieces, now that the jewels stack (MUIdle, D28): a single
+    /// jewel keeps the original's price.
+    /// </summary>
+    /// <param name="number">The item number.</param>
+    /// <param name="group">The item group.</param>
+    /// <param name="pieces">The pieces of the stack.</param>
+    /// <param name="price">The price.</param>
+    [TestCase(13, 14, 1, 9_000_000)]
+    [TestCase(13, 14, 3, 27_000_000)]
+    [TestCase(15, 12, 5, 4_050_000)]
+    [TestCase(16, 14, 2, 90_000_000)]
+    public void StackedJewelsArePricedByPiece(byte number, byte group, byte pieces, long price)
+    {
+        this.CheckPrice(number, 0, pieces, 1, 1, group, 0, 0, price);
+    }
+
+    /// <summary>
     /// Tests if the small heal potion price is calculated correctly.
     /// </summary>
     /// <param name="level">The level.</param>

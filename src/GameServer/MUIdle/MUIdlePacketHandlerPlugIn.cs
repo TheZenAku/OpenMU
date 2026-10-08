@@ -82,6 +82,17 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                     }
 
                     break;
+                case MUIdlePackets.SplitStackSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        if (request.RootElement.TryGetProperty("slot", out var slotElement) && slotElement.TryGetByte(out var slot)
+                            && request.RootElement.TryGetProperty("amount", out var amountElement) && amountElement.TryGetInt32(out var amount))
+                        {
+                            await MUIdleStacks.SplitAsync(remotePlayer, slot, amount).ConfigureAwait(false);
+                        }
+                    }
+
+                    break;
             }
         }
         catch (JsonException)

@@ -93,16 +93,18 @@ public class ItemPriceCalculator
                 return gold;
             }
         },
-        { (int)SpecialItems.Bless, _ => 9000000 },
-        { (int)SpecialItems.Soul, _ => 6000000 },
-        { (int)SpecialItems.Chaos, _ => 810000 },
-        { (int)SpecialItems.Life, _ => 45000000 },
-        { (int)SpecialItems.Creation, _ => 36000000 },
-        { (int)SpecialItems.Guardian, _ => 60000000 },
-        { (int)SpecialItems.Gemstone, _ => 18600 },
-        { (int)SpecialItems.Harmony, _ => 18600 },
-        { (int)SpecialItems.LowerRefineStone, _ => 18600 },
-        { (int)SpecialItems.HigherRefineStone, _ => 18600 },
+
+        // Per piece: MUIdle lets jewels stack (MUIdleStackSizesPlugInSeason6), a stack is worth its pieces.
+        { (int)SpecialItems.Bless, item => 9000000L * item.Durability() },
+        { (int)SpecialItems.Soul, item => 6000000L * item.Durability() },
+        { (int)SpecialItems.Chaos, item => 810000L * item.Durability() },
+        { (int)SpecialItems.Life, item => 45000000L * item.Durability() },
+        { (int)SpecialItems.Creation, item => 36000000L * item.Durability() },
+        { (int)SpecialItems.Guardian, item => 60000000L * item.Durability() },
+        { (int)SpecialItems.Gemstone, item => 18600L * item.Durability() },
+        { (int)SpecialItems.Harmony, item => 18600L * item.Durability() },
+        { (int)SpecialItems.LowerRefineStone, item => 18600L * item.Durability() },
+        { (int)SpecialItems.HigherRefineStone, item => 18600L * item.Durability() },
         { (int)SpecialItems.PackedBless, item => (item.Level + 1) * 9000000 * 10 },
         { (int)SpecialItems.PackedSoul, item => (item.Level + 1) * 6000000 * 10 },
         { (int)SpecialItems.PackedChaos, item => (item.Level + 1) * 810000 * 10 },
@@ -401,7 +403,8 @@ public class ItemPriceCalculator
     {
         if (SpecialItemOldValueDictionary.TryGetValue(GetId(item.Definition!.Group, item.Definition.Number), out var oldValue))
         {
-            return RoundPrice(oldValue);
+            // Per piece, as the jewels stack in MUIdle (a single jewel is one piece).
+            return RoundPrice(oldValue * Math.Max((byte)1, item.Durability()));
         }
         else
         {

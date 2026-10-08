@@ -53,6 +53,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         {
             this.Statistics.AddDeath();
             this.Statistics.Record(this.CurrentMapName, deaths: 1);
+            MUIdleHuntDeaths.Record(this);
             MUIdleHuntTracker.Report(this, HuntActivityKind.Dead);
         };
         this.Died += this._deathHandler;
@@ -110,7 +111,8 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         }
 
         // Not to a map it keeps dying on (as the map choice avoids it): back to farming meanwhile.
-        if (this.Statistics.IsDeadly(this.GameContext.Configuration.Maps.FirstOrDefault(m => m.Number == target.Map)?.Name.ValueInNeutralLanguage))
+        if (this.Statistics.IsDeadly(this.GameContext.Configuration.Maps.FirstOrDefault(m => m.Number == target.Map)?.Name.ValueInNeutralLanguage)
+            || MUIdleHuntDeaths.IsDeadly(this, target.Map))
         {
             return null;
         }
@@ -231,6 +233,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         SpendingReserve = () => MUIdleEconomy.Reserve(this),
         FundsLow = () => MUIdleEconomy.FundsLow(this),
         AvoidMap = name => this.Statistics.IsDeadly(name)
+                           || MUIdleHuntDeaths.IsDeadly(this, name)
                            || this.Statistics.IsUnsustainable(name, this.Money, MUIdleEconomy.Reserve(this))
                            || (MUIdleEconomy.FundsLow(this) && this.Statistics.IsLosing(name, MUIdleEconomy.FeePerMinute(this))),
         Errand = this.Settings.QuestsAuto

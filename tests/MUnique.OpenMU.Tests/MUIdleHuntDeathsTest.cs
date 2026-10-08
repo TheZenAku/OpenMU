@@ -37,4 +37,21 @@ public class MUIdleHuntDeathsTest
             Assert.That(MUIdleHuntDeaths.IsDeadly(deaths, 4, Now.AddMinutes(10)), Is.False);
         });
     }
+
+    /// <summary>
+    /// One death right after arriving keeps the map deadly for <see cref="MUIdleHuntDeaths.ArrivalWindow"/>,
+    /// long after the three-deaths window has let it go; other maps stay open.
+    /// </summary>
+    [Test]
+    public void OneDeathOnArrivalMakesTheMapDeadlyForLonger()
+    {
+        var arrivalDeaths = new List<(short Map, DateTime At)> { (1, Now.AddMinutes(-90)) };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(MUIdleHuntDeaths.DiedOnArrival(arrivalDeaths, 1, Now), Is.True);
+            Assert.That(MUIdleHuntDeaths.DiedOnArrival(arrivalDeaths, 0, Now), Is.False);
+            Assert.That(MUIdleHuntDeaths.DiedOnArrival(arrivalDeaths, 1, Now.AddMinutes(31)), Is.False);
+        });
+    }
 }

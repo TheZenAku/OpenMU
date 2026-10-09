@@ -103,7 +103,10 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                                 .OfType<byte>()
                                 .ToList();
                             var junkOnly = request.RootElement.TryGetProperty("junk", out var junk) && junk.ValueKind == JsonValueKind.True;
-                            await MUIdleInventory.SellAsync(remotePlayer, slots, junkOnly).ConfigureAwait(false);
+                            var storageSlots = request.RootElement.TryGetProperty("storage", out var storageElement) && storageElement.ValueKind == JsonValueKind.Array
+                                ? storageElement.EnumerateArray().Select(e => e.TryGetByte(out var s) ? s : (byte?)null).OfType<byte>().ToList()
+                                : null;
+                            await MUIdleInventory.SellAsync(remotePlayer, slots, junkOnly, storageSlots).ConfigureAwait(false);
                         }
                     }
 
@@ -113,6 +116,27 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                     break;
                 case MUIdlePackets.RepairAllSubCode:
                     await MUIdleInventory.RepairAllAsync(remotePlayer).ConfigureAwait(false);
+                    break;
+                case MUIdlePackets.StoreItemSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        if (request.RootElement.TryGetProperty("slot", out var slotElement) && slotElement.TryGetByte(out var slot)
+                            && request.RootElement.TryGetProperty("page", out var pageElement) && pageElement.TryGetInt32(out var page))
+                        {
+                            await MUIdleInventory.StoreAsync(remotePlayer, slot, page).ConfigureAwait(false);
+                        }
+                    }
+
+                    break;
+                case MUIdlePackets.RetrieveItemSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        if (request.RootElement.TryGetProperty("slot", out var slotElement) && slotElement.TryGetByte(out var slot))
+                        {
+                            await MUIdleInventory.RetrieveAsync(remotePlayer, slot).ConfigureAwait(false);
+                        }
+                    }
+
                     break;
                 case MUIdlePackets.BuyInventoryPageSubCode:
                     using (var request = JsonDocument.Parse(payload))

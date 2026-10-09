@@ -410,8 +410,10 @@ internal static class MUIdleSessions
     /// <param name="state">The state.</param>
     /// <param name="resume">If set to <c>true</c>, the client should start HUNT as soon as it's ready.</param>
     /// <param name="ground">Where to walk before (re)starting HUNT, after a warp to the pinned map.</param>
-    public static ValueTask SendStateAsync(RemotePlayer player, MUIdleCharacterState state, bool resume = false, Point? ground = null)
+    public static async ValueTask SendStateAsync(RemotePlayer player, MUIdleCharacterState state, bool resume = false, Point? ground = null)
     {
+        // The inventory pages carry the items of the storage pages, loaded on the first send.
+        var inventory = await MUIdleInventory.SnapshotAsync(player, GetConfiguration(player.GameContext), state).ConfigureAwait(false);
         var settings = MUIdleSettings.Parse(state.SettingsJson);
         MUIdleHuntTracker.SetSettings(player, settings, state.HuntActive);
 
@@ -444,9 +446,9 @@ internal static class MUIdleSessions
             progression = MUIdleSeason.Snapshot(player, GetConfiguration(player.GameContext)),
             contracts = MUIdleContracts.Snapshot(player, state),
             quest = MUIdleQuests.Snapshot(player),
-            inventory = MUIdleInventory.Snapshot(player, GetConfiguration(player.GameContext)),
+            inventory,
         });
-        return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
+        await MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json).ConfigureAwait(false);
     }
 
     /// <summary>

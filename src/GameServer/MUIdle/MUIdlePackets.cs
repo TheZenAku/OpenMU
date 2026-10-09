@@ -69,6 +69,12 @@ internal static class MUIdlePackets
     /// <summary>Client to server: buy the next inventory page (<c>{"page":3}</c>).</summary>
     public const byte BuyInventoryPageSubCode = 0x1A;
 
+    /// <summary>Client to server: put an inventory item onto a storage page (<c>{"slot":30,"page":4}</c>).</summary>
+    public const byte StoreItemSubCode = 0x1B;
+
+    /// <summary>Client to server: take an item of a storage page back into the inventory (<c>{"slot":5}</c>).</summary>
+    public const byte RetrieveItemSubCode = 0x1C;
+
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;
 

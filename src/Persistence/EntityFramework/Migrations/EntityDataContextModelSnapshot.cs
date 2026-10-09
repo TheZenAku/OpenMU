@@ -2794,6 +2794,12 @@ namespace MUnique.OpenMU.Persistence.EntityFramework.Migrations
                     b.Property<string>("SettingsJson")
                         .HasColumnType("text");
 
+                    b.Property<int>("StoragePages")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("StoragePagesId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CharacterId")

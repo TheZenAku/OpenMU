@@ -52,4 +52,15 @@ public class MUIdleCharacterState
     /// Gets or sets the daily contracts of the character (reset at 00:00 UTC), as JSON.
     /// </summary>
     public string? ContractsJson { get; set; }
+
+    /// <summary>
+    /// Gets or sets the identifier of the item storage of the inventory pages IV to VII (D33); null until
+    /// the first of them is bought. Pages I to III are the inventory and its extensions.
+    /// </summary>
+    public Guid? StoragePagesId { get; set; }
+
+    /// <summary>
+    /// Gets or sets how many of the inventory pages IV to VII the character bought (D33).
+    /// </summary>
+    public int StoragePages { get; set; }
 }

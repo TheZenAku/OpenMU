@@ -141,6 +141,50 @@ public class MUIdleInventoryTest
         Assert.That(player.SelectedCharacter.InventoryExtensions, Is.EqualTo(4));
     }
 
+    /// <summary>
+    /// The storage pages come after the three inventory pages, and only once all three are there.
+    /// </summary>
+    [Test]
+    public void StoragePagesFollowTheInventoryPages()
+    {
+        var state = new BasicModel.MUIdleCharacterState { StoragePages = 2 };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(MUIdleInventory.TotalPages(new BasicModel.Character { InventoryExtensions = 2 }, state), Is.EqualTo(2));
+            Assert.That(MUIdleInventory.TotalPages(new BasicModel.Character { InventoryExtensions = 4 }, state), Is.EqualTo(5));
+            Assert.That(MUIdleInventory.TotalPages(new BasicModel.Character { InventoryExtensions = 4 }, new BasicModel.MUIdleCharacterState { StoragePages = 9 }), Is.EqualTo(7));
+            Assert.That(MUIdleInventory.FirstStorageSlot(4), Is.Zero);
+            Assert.That(MUIdleInventory.FirstStorageSlot(7), Is.EqualTo(192));
+        });
+    }
+
+    /// <summary>
+    /// An item goes to the first place on its page where it fits, never onto another page.
+    /// </summary>
+    [Test]
+    public void StoredItemsFitTheirPage()
+    {
+        var storage = new BasicModel.ItemStorage();
+        var sword = new BasicModel.ItemDefinition { Width = 1, Height = 3 };
+        var gem = new BasicModel.ItemDefinition { Width = 1, Height = 1 };
+
+        // Page V (slots 64-127): column 0 holds a sword; the next item goes beside it.
+        storage.Items.Add(CreateItem(sword, 64));
+        Assert.That(MUIdleInventory.FreeStorageSlot(storage, 5, CreateItem(gem)), Is.EqualTo(65));
+
+        // Page IV is empty: its first square.
+        Assert.That(MUIdleInventory.FreeStorageSlot(storage, 4, CreateItem(sword)), Is.Zero);
+
+        // A full page VII has no place, and the item does not spill elsewhere.
+        for (var slot = 192; slot <= 255; slot++)
+        {
+            storage.Items.Add(CreateItem(gem, (byte)slot));
+        }
+
+        Assert.That(MUIdleInventory.FreeStorageSlot(storage, 7, CreateItem(gem)), Is.Null);
+    }
+
     private static Item CreateItem(ItemDefinition definition, byte slot = 12)
         => new BasicModel.Item { Id = Guid.NewGuid(), Definition = definition, Durability = 1, ItemSlot = slot };
 }

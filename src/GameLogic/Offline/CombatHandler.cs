@@ -419,12 +419,16 @@ public sealed class CombatHandler
     /// <param name="player">The player.</param>
     /// <param name="monster">The monster.</param>
     /// <returns>The hits to kill (infinite when the attack does not get through), whether it is safe, and its level.</returns>
-    internal static (float HitsToKill, bool Safe, int Level) EstimateKill(Player player, MonsterDefinition monster)
+    internal static (float HitsToKill, bool Safe, int Level, double TargetsPerStrike) EstimateKill(Player player, MonsterDefinition monster)
     {
         var (level, _, defense, health, _) = GetMonsterCombatStats(monster);
-        var net = GetAttackPower(player) - defense;
+
+        // What the character's strikes really dealt, once the engine saw enough of them (CombatObservations).
+        var observed = CombatObservations.Observed(player);
+        var power = observed?.RawDamage ?? GetAttackPower(player);
+        var net = (float)power - defense;
         var hits = net > 0 ? MathF.Max(1f, health / net) : float.PositiveInfinity;
-        return (hits, IsSafeTarget(player, monster), level);
+        return (hits, IsSafeTarget(player, monster), level, observed?.TargetsPerStrike ?? 1);
     }
 
     private static (int Level, float AverageDamage, float Defense, float Health, float AttackRate) GetMonsterCombatStats(MonsterDefinition monster)
@@ -555,20 +559,59 @@ public sealed class CombatHandler
             this._priorityAttacks++;
         }
 
-        if (skillEntry?.Skill is not { } skill)
+        if (skillEntry?.Skill is { SkillType: SkillType.AreaSkillAutomaticHits or SkillType.AreaSkillExplicitTarget or SkillType.AreaSkillExplicitHits })
         {
-            await this.ExecutePhysicalAttackAsync(target).ConfigureAwait(false);
+            await this.ExecuteAreaSkillAttackAsync(target, skillEntry, isCombo).ConfigureAwait(false);
             return;
         }
 
-        if (skill.SkillType is SkillType.AreaSkillAutomaticHits or SkillType.AreaSkillExplicitTarget or SkillType.AreaSkillExplicitHits)
+        // MUIdle (HUNT v2): what the strike really dealt (CombatObservations).
+        var before = target is Monster ? target.Attributes[Stats.CurrentHealth] : 0;
+        if (skillEntry?.Skill is not { } skill)
         {
-            await this.ExecuteAreaSkillAttackAsync(target, skillEntry, isCombo).ConfigureAwait(false);
+            await this.ExecutePhysicalAttackAsync(target).ConfigureAwait(false);
         }
         else
         {
             await this.ExecuteTargetedSkillAttackAsync(target, skill).ConfigureAwait(false);
         }
+
+        if (target is Monster struck)
+        {
+            this.ObserveStrike([(struck, before)]);
+        }
+    }
+
+    /// <summary>
+    /// MUIdle (HUNT v2): records what a strike dealt to the monsters it hit - the health they lost plus
+    /// their defense is the damage before the defense; a monster it killed only says "at least this".
+    /// </summary>
+    private void ObserveStrike(IEnumerable<(Monster Monster, float HealthBefore)> struck)
+    {
+        var hit = 0;
+        double survivedSum = 0;
+        var survived = 0;
+        double? killedLeast = null;
+        foreach (var (monster, healthBefore) in struck)
+        {
+            var defense = GetMonsterCombatStats(monster.Definition).Defense;
+            if (!monster.IsAlive)
+            {
+                hit++;
+                killedLeast = Math.Max(killedLeast ?? 0, healthBefore + defense);
+                continue;
+            }
+
+            var lost = healthBefore - monster.Attributes[Stats.CurrentHealth];
+            if (lost > 0)
+            {
+                hit++;
+                survivedSum += lost + defense;
+                survived++;
+            }
+        }
+
+        CombatObservations.RecordStrike(this._player, hit, survived > 0 ? survivedSum / survived : null, killedLeast);
     }
 
     private void RefreshTarget()
@@ -777,10 +820,14 @@ public sealed class CombatHandler
             .Where(this.IsMonsterAttackable)
             ?? [];
 
+        var struck = new List<(Monster Monster, float HealthBefore)>();
         foreach (var monster in monstersInRange)
         {
+            struck.Add((monster, monster.Attributes[Stats.CurrentHealth]));
             await monster.AttackByAsync(this._player, skillEntry, isCombo).ConfigureAwait(false);
         }
+
+        this.ObserveStrike(struck);
 
         // A player target is hit by the area skill as well. Outside of free-for-all events ONLY the
         // target itself (the self-defense aggressor): any bystanding player in the blast radius is

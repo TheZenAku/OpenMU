@@ -64,7 +64,7 @@ public static class HuntingSpotRating
             return 0;
         }
 
-        var (hits, safe, level) = CombatHandler.EstimateKill(player, monster);
+        var (hits, safe, level, targetsPerStrike) = CombatHandler.EstimateKill(player, monster);
         if (!safe || float.IsInfinity(hits) || level <= 0)
         {
             return 0;
@@ -83,7 +83,9 @@ public static class HuntingSpotRating
         var width = Math.Abs(area.X2 - area.X1) + 1;
         var height = Math.Abs(area.Y2 - area.Y1) + 1;
         var spacing = Math.Min(MaximumSpacingTiles, Math.Sqrt(width * height / (double)area.Quantity));
-        var killSeconds = Math.Ceiling(hits) * SecondsPerStrike;
+        // An area strike hits several monsters at once - as many as the character's strikes did, at most a
+        // third of the area's monsters (they stand spread out).
+        var killSeconds = Math.Ceiling(hits) * SecondsPerStrike / Math.Clamp(targetsPerStrike, 1, Math.Max(1, area.Quantity / 3.0));
         var walkSeconds = spacing / TilesPerSecond;
         var killsPerMinute = 60.0 / (killSeconds + walkSeconds);
 

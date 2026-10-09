@@ -238,6 +238,12 @@ public class OfflinePlayer : Player, IHunter
     /// <inheritdoc/>
     void IHunter.ArmRevengeAfterRespawn() => this.ArmRevengeAfterRespawn();
 
+    /// <inheritdoc/>
+    ValueTask IHunter.StopSessionAsync()
+        => this.Account?.LoginName is { } loginName
+            ? this.GameContext.OfflinePlayerManager.StopAsync(loginName)
+            : ValueTask.CompletedTask;
+
     /// <summary>
     /// Initializes the offline player by loading the account fresh from the database.
     /// </summary>

@@ -91,4 +91,16 @@ public interface IHunter
     /// Arms a pending revenge after the respawn (bots only).
     /// </summary>
     void ArmRevengeAfterRespawn();
+
+    /// <summary>
+    /// Gets a value indicating whether the hunt holds still for now (MUIdle: the player of an online hunt
+    /// took the controls); the engine and the navigator skip their ticks meanwhile.
+    /// </summary>
+    bool IsPaused => false;
+
+    /// <summary>
+    /// Ends the hunting session itself (it could not pay its fee, or it died and does not go on).
+    /// </summary>
+    /// <returns>The task.</returns>
+    ValueTask StopSessionAsync();
 }

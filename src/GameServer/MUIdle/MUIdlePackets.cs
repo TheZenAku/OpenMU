@@ -78,6 +78,9 @@ internal static class MUIdlePackets
     /// <summary>Client to server: take an item of a storage page back into the inventory (<c>{"slot":5}</c>).</summary>
     public const byte RetrieveItemSubCode = 0x1C;
 
+    /// <summary>Client to server: the player walked, attacked or cast on its own; the online hunt holds still a moment.</summary>
+    public const byte ManualControlSubCode = 0x1D;
+
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;
 

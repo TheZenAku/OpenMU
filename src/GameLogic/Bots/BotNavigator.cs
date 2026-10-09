@@ -707,6 +707,12 @@ internal sealed class BotNavigator : AsyncDisposable
 
     private async Task SafeEvaluateAsync(CancellationToken cancellationToken)
     {
+        // MUIdle (HUNT v2): the player of an online hunt has the controls for now.
+        if (this._hunter.IsPaused)
+        {
+            return;
+        }
+
         // The timer fires on a fixed interval regardless of whether the previous evaluation finished;
         // skip overlapping runs so a single bot never has two travel walks / searches in flight.
         if (Interlocked.CompareExchange(ref this._isEvaluating, 1, 0) != 0)

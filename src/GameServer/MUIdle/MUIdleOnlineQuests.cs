@@ -48,7 +48,12 @@ internal static class MUIdleOnlineQuests
                     ? MUIdleQuests.ZenShort(player)
                     : null;
                 MUIdleHuntTracker.SetNote(player, "quest", shortOf is null ? null : "questZen", shortOf?.Have ?? 0, shortOf?.Need ?? 0);
-                await TryStepAsync(player).ConfigureAwait(false);
+
+                // HUNT v2: an online hunt's navigator runs the quest errands itself (policy Errand).
+                if (OnlineHunt.Of(player) is null)
+                {
+                    await TryStepAsync(player).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {

@@ -189,14 +189,16 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
             return;
         }
 
+        // MUIdle (HUNT v2): the player of an online hunt has the controls for now.
+        if (this._hunter.IsPaused)
+        {
+            return;
+        }
+
         if (!await this._zenHandler.DeductZenAsync().ConfigureAwait(false))
         {
             this._hunter.StopReason = "zen";
-            if (this._player.Account?.LoginName is { } loginName)
-            {
-                await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);
-            }
-
+            await this._hunter.StopSessionAsync().ConfigureAwait(false);
             return;
         }
 
@@ -254,12 +256,8 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
                 return false;
             }
 
-            if (this._player.Account?.LoginName is { } loginName)
-            {
-                this._player.Logger.LogInformation("Offline player died and successfully respawned. Stopping session for {0}.", loginName);
-                await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);
-            }
-
+            this._player.Logger.LogInformation("Hunter {Name} died and respawned. Stopping its session.", this._player.Name);
+            await this._hunter.StopSessionAsync().ConfigureAwait(false);
             return true;
         }
 

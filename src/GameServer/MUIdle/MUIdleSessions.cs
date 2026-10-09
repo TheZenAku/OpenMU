@@ -137,6 +137,9 @@ internal static class MUIdleSessions
             return;
         }
 
+        // The online hunt ends with the connection; the offline hunter takes over below.
+        await OnlineHunt.StopAsync(player, "disconnected").ConfigureAwait(false);
+
         var helperRunning = player.Attributes?[Stats.IsMuHelperActive] > 0 || MUIdleHuntTracker.HasHuntIntent(player);
         var state = await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
         state.HuntActive = helperRunning;
@@ -387,11 +390,15 @@ internal static class MUIdleSessions
             await player.SaveProgressAsync().ConfigureAwait(false);
         }
 
-        // The client resumes HUNT once its map is loaded (its helper loop stops in what it believes
-        // to be a safezone, which is everywhere until the terrain arrived); the start request is
-        // validated by the server like any other.
-        var resume = state.HuntActive && configuration.ResumeHuntingOnLogin && !player.IsAtSafezone();
-        await SendStateAsync(player, state, resume).ConfigureAwait(false);
+        await SendStateAsync(player, state).ConfigureAwait(false);
+
+        // HUNT v2: the server hunts for the player online too (OnlineHunt) and goes on where the
+        // character stands - from town the navigator takes it out to a hunting ground.
+        if (state.HuntActive && configuration.ResumeHuntingOnLogin)
+        {
+            MUIdleHuntTracker.SetHuntIntent(player, true);
+            await OnlineHunt.StartAsync(player, MUIdleSettings.Parse(state.SettingsJson)).ConfigureAwait(false);
+        }
         if (summary is not null)
         {
             await MUIdlePackets.SendJsonAsync(player, MUIdlePackets.OfflineSummarySubCode, summary.ToJson()).ConfigureAwait(false);

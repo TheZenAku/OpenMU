@@ -48,6 +48,12 @@ internal static class MUIdleOnlineAutoMap
         var cooldown = TimeSpan.FromMinutes(configuration.OnlineAutoMapMinutes);
         foreach (var player in (await gameContext.GetPlayersAsync().ConfigureAwait(false)).OfType<RemotePlayer>())
         {
+            // HUNT v2: an online hunt's navigator chooses the maps itself.
+            if (OnlineHunt.Of(player) is not null)
+            {
+                continue;
+            }
+
             try
             {
                 await TryMoveAsync(player, cooldown).ConfigureAwait(false);

@@ -1050,13 +1050,30 @@ public sealed class CombatHandler
 
         var ridesFenrir = this.RidesFenrir();
         var isBot = this.IsBot;
-        var priority = this._config?.SkillPriority ?? [];
+        var usable = skillList.Skills.Where(entry => this.IsUsableAttackSkill(entry, ridesFenrir, isBot)).ToList();
+        var chain = ChainCombo(definition, usable, this._config?.SkillPriority ?? [], this.ScoreSkill);
+        return chain.Count >= MinComboSkillCount ? chain : [];
+    }
+
+    /// <summary>
+    /// MUIdle (HUNT v2): chains a combo out of the usable skills - per step, in the order of the steps,
+    /// the skill which comes first in the player's order, else the one scoring highest; a step never
+    /// repeats the skill of the step before it (ComboStateMachine refuses that). A master skill counts
+    /// as the skill it strengthens.
+    /// </summary>
+    /// <param name="definition">The combo definition.</param>
+    /// <param name="usable">The skills the character can cast now.</param>
+    /// <param name="priority">The player's order of skill numbers.</param>
+    /// <param name="score">What a cast of a skill is worth.</param>
+    /// <returns>The skill numbers of the steps; empty when a step has no usable skill.</returns>
+    internal static List<int> ChainCombo(SkillComboDefinition definition, IReadOnlyCollection<SkillEntry> usable, IReadOnlyList<int> priority, Func<Skill, float> score)
+    {
         var chain = new List<int>();
         Skill? previous = null;
         foreach (var order in definition.Steps.Select(s => s.Order).Distinct().Order())
         {
-            SkillEntry? best = null;
-            var bestRank = float.MinValue;
+            Skill? best = null;
+            (int Preferred, float Value) bestRank = default;
             foreach (var step in definition.Steps)
             {
                 if (step.Order != order || step.Skill is not { } stepSkill || stepSkill == previous)
@@ -1064,36 +1081,34 @@ public sealed class CombatHandler
                     continue;
                 }
 
-                // A master skill strengthening the step's skill counts as it (ComboStateMachine).
-                foreach (var entry in skillList.Skills)
+                foreach (var entry in usable)
                 {
-                    if (entry.Skill is not { } skill
-                        || skill.GetBaseSkill() != stepSkill
-                        || !this.IsUsableAttackSkill(entry, ridesFenrir, isBot))
+                    if (entry.Skill is not { } skill || skill.GetBaseSkill() != stepSkill)
                     {
                         continue;
                     }
 
+                    // The player's order first (the earlier, the better), then the score.
                     var position = IndexOf(priority, skill.Number);
-                    var rank = position >= 0 ? float.MaxValue - position : this.ScoreSkill(skill);
-                    if (best is null || rank > bestRank)
+                    var rank = position >= 0 ? (1, (float)-position) : (0, score(skill));
+                    if (best is null || rank.CompareTo(bestRank) > 0)
                     {
-                        best = entry;
+                        best = skill;
                         bestRank = rank;
                     }
                 }
             }
 
-            if (best?.Skill is not { } chosen)
+            if (best is null)
             {
                 return [];
             }
 
-            chain.Add(chosen.Number);
-            previous = chosen.GetBaseSkill();
+            chain.Add(best.Number);
+            previous = best.GetBaseSkill();
         }
 
-        return chain.Count >= MinComboSkillCount ? chain : [];
+        return chain;
 
         static int IndexOf(IReadOnlyList<int> list, int value)
         {

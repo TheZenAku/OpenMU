@@ -4,6 +4,7 @@
 
 namespace MUnique.OpenMU.Tests;
 
+using System.IO;
 using MUnique.OpenMU.GameServer.MUIdle;
 
 /// <summary>
@@ -68,6 +69,37 @@ public class MUIdleMapMemoryTest
             Assert.That(MUIdleMapMemory.BetterProvenMap(player, statistics, "Lost Tower"), Is.Null);
             Assert.That(MUIdleMapMemory.BetterProvenMap(player, statistics, "Kanturu"), Is.Null, "the current map is not measured yet");
         });
+    }
+
+    /// <summary>
+    /// A finished hunt is written to the file of <c>MUIDLE_MAP_MEMORY_FILE</c>, so a restart keeps it.
+    /// </summary>
+    [Test]
+    public async ValueTask FinishedHuntsAreWrittenToTheFileAsync()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"muidle-map-memory-{Guid.NewGuid():N}.json");
+        Environment.SetEnvironmentVariable("MUIDLE_MAP_MEMORY_FILE", file);
+        try
+        {
+            var player = await PlayerTestHelper.CreatePlayerAsync().ConfigureAwait(false);
+            var id = Guid.NewGuid();
+            player.SelectedCharacter!.Id = id;
+            var statistics = new OfflineSessionStatistics();
+            Hunt(statistics, "Tarkan", 6, 3_000, Start);
+            MUIdleMapMemory.Merge(player, statistics);
+
+            var written = File.ReadAllText(file);
+            Assert.Multiple(() =>
+            {
+                Assert.That(written, Does.Contain(id.ToString()));
+                Assert.That(written, Does.Contain("Tarkan"));
+            });
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MUIDLE_MAP_MEMORY_FILE", null);
+            File.Delete(file);
+        }
     }
 
     /// <summary>Hunts on a map for some minutes, one record a minute (as the hunts record every second).</summary>

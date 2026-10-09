@@ -5,6 +5,9 @@
 namespace MUnique.OpenMU.GameServer.MUIdle;
 
 using System.Collections.Concurrent;
+using System.IO;
+using System.Text.Json;
+using System.Threading;
 using MUnique.OpenMU.GameLogic;
 
 /// <summary>
@@ -12,7 +15,8 @@ using MUnique.OpenMU.GameLogic;
 /// its hunts online and offline - the measure that decides the map once there is one. The estimate
 /// (<see cref="GameLogic.Bots.HuntingSpotRating"/>) only says where to look first: it misjudged a
 /// level 380 wizard's Devias against Lost Tower by a factor of four (10-09).
-/// Kept in memory (a restart forgets it); a measure from long ago or from a character 15 levels
+/// Kept in memory and, when <c>MUIDLE_MAP_MEMORY_FILE</c> names a file, there too (every update restarts
+/// the server, which forgot all of it before); a measure from long ago or from a character 15 levels
 /// apart no longer counts.
 /// </summary>
 internal static class MUIdleMapMemory
@@ -29,6 +33,12 @@ internal static class MUIdleMapMemory
 
     private static readonly ConcurrentDictionary<Guid, ConcurrentDictionary<string, Entry>> Memory = new();
 
+    private static readonly object FileLock = new();
+
+    private static int _loaded;
+
+    private static string? FilePath => Environment.GetEnvironmentVariable("MUIDLE_MAP_MEMORY_FILE") is { Length: > 0 } file ? file : null;
+
     /// <summary>
     /// Keeps what a finished hunt earned per map.
     /// </summary>
@@ -41,6 +51,7 @@ internal static class MUIdleMapMemory
             return;
         }
 
+        EnsureLoaded();
         var maps = Memory.GetOrAdd(id, _ => new ConcurrentDictionary<string, Entry>());
         lock (statistics.MapRates)
         {
@@ -54,6 +65,8 @@ internal static class MUIdleMapMemory
                         : new Entry(rate.Minutes, rate.Experience, player.Level, DateTime.UtcNow));
             }
         }
+
+        Save();
     }
 
     /// <summary>
@@ -71,6 +84,7 @@ internal static class MUIdleMapMemory
             return null;
         }
 
+        EnsureLoaded();
         double minutes = 0, experience = 0;
         lock (statistics.MapRates)
         {
@@ -130,6 +144,59 @@ internal static class MUIdleMapMemory
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// Reads the file once, on the first use after a start.
+    /// </summary>
+    private static void EnsureLoaded()
+    {
+        if (Interlocked.Exchange(ref _loaded, 1) == 1 || FilePath is not { } path || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var kept = JsonSerializer.Deserialize<Dictionary<Guid, Dictionary<string, Entry>>>(File.ReadAllText(path));
+            foreach (var (id, maps) in kept ?? [])
+            {
+                Memory.TryAdd(id, new ConcurrentDictionary<string, Entry>(maps));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // A broken file is a lost memory, nothing more: the measures come again.
+        }
+    }
+
+    /// <summary>
+    /// Writes the memory (what is not forgotten yet) to the file, through a temporary one.
+    /// </summary>
+    private static void Save()
+    {
+        if (FilePath is not { } path)
+        {
+            return;
+        }
+
+        lock (FileLock)
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                var snapshot = Memory.ToDictionary(
+                    character => character.Key,
+                    character => character.Value.Where(map => now - map.Value.AtUtc <= Forget).ToDictionary(map => map.Key, map => map.Value));
+                var temporary = path + ".tmp";
+                File.WriteAllText(temporary, JsonSerializer.Serialize(snapshot));
+                File.Move(temporary, path, true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Kept in memory still; the next hunt's end tries again.
+            }
+        }
     }
 
     private static bool Relevant(Entry entry, int level)

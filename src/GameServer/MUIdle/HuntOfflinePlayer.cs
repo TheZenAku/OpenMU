@@ -37,6 +37,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
     private readonly EventHandler<DeathInformation> _deathHandler;
     private BotNavigator? _navigator;
     private long _lastMoney;
+    private int _mapsKept;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HuntOfflinePlayer"/> class.
@@ -111,6 +112,12 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
     /// <inheritdoc />
     public override async ValueTask StopAsync()
     {
+        // Once: a stop may come twice (the manager, then the dispose).
+        if (Interlocked.Exchange(ref this._mapsKept, 1) == 0)
+        {
+            MUIdleMapMemory.Merge(this, this.Statistics);
+        }
+
         await this.StopNavigatorAsync().ConfigureAwait(false);
         await base.StopAsync().ConfigureAwait(false);
     }

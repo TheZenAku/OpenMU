@@ -253,6 +253,7 @@ internal sealed class OnlineHunt : IHunter
         }
 
         this._player.MuHelperSettings = null;
+        MUIdleMapMemory.Merge(this._player, this.Statistics);
         if (reason is not null)
         {
             MUIdleHuntTracker.Report(this._player, HuntActivityKind.Idle);

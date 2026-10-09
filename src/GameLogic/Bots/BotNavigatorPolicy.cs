@@ -146,6 +146,13 @@ public sealed record BotNavigatorPolicy
     public bool RateByExperience { get; init; }
 
     /// <summary>
+    /// MUIdle (HUNT v2): gets the experience per minute the character really earned on a map (by map
+    /// name), once it hunted there long enough; <c>null</c> before. With <see cref="RateByExperience"/>
+    /// the measure decides over the estimate, and the estimate is scaled by what the measures showed.
+    /// </summary>
+    public Func<string, double?>? MeasuredExperiencePerMinute { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

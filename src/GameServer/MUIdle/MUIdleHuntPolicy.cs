@@ -43,7 +43,9 @@ internal static class MUIdleHuntPolicy
             WarpBetweenMaps = settings.AutoMapSelection || settings.PreferredMap is not null,
             PinnedMap = settings.AutoMapSelection ? null : settings.PreferredMap,
             ActivityChanged = (activity, map) => MUIdleHuntTracker.Report(player, MUIdleHuntTracker.FromBot(activity), map),
-            BetterProvenMap = settings.AutoMapSelection ? statistics.BetterProvenMap : null,
+            // HUNT v2: what the character really earned per map, over its hunts (MUIdleMapMemory).
+            BetterProvenMap = settings.AutoMapSelection ? name => MUIdleMapMemory.BetterProvenMap(player, statistics, name) : null,
+            MeasuredExperiencePerMinute = name => MUIdleMapMemory.Measured(player, statistics, name),
             Rally = settings.BossesFirst || settings.QuestItemsFirst ? () => Rally(hunter, settings, statistics) : null,
             PreferredMonsterLevels = settings is { AutoMapSelection: true, QuestItemsFirst: true } ? () => MUIdleQuests.MissingItemBand(player) : null,
 

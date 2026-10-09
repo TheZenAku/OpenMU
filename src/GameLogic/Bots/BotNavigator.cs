@@ -2714,7 +2714,34 @@ internal sealed class BotNavigator : AsyncDisposable
         monsterLevel = 0;
 
         var current = this._player.CurrentMap?.Definition;
-        var here = current is null ? 0 : HuntingSpotRating.BestSpot(this._player, current).ExperiencePerMinute;
+        var measuredOf = this._policy.MeasuredExperiencePerMinute;
+        double? Measured(GameMapDefinition map) => measuredOf?.Invoke(map.Name.ValueInNeutralLanguage);
+        var hereEstimate = current is null ? 0 : HuntingSpotRating.BestSpot(this._player, current).ExperiencePerMinute;
+        var hereMeasured = current is null ? null : Measured(current);
+
+        // Not off a map before its measure is taken (unless it pays nothing): a move must be weighed
+        // against what it leaves, and the estimate alone has been wrong by a factor of four.
+        if (!escape && measuredOf is not null && hereMeasured is null && hereEstimate > 0)
+        {
+            return false;
+        }
+
+        // The estimate, scaled by what the character really earned where both are known.
+        var ratios = new List<double>();
+        if (measuredOf is not null)
+        {
+            foreach (var map in this._player.GameContext.Configuration.Maps)
+            {
+                if (Measured(map) is { } measured && HuntingSpotRating.BestSpot(this._player, map).ExperiencePerMinute is > 0 and var estimated)
+                {
+                    ratios.Add(measured / estimated);
+                }
+            }
+        }
+
+        ratios.Sort();
+        var calibration = ratios.Count > 0 ? ratios[ratios.Count / 2] : 1.0;
+        var here = hereMeasured ?? (hereEstimate * calibration);
         var threshold = escape || here <= 0 ? 0 : here * RicherMapMargin;
         var bestRate = 0.0;
         foreach (var candidate in this._player.GameContext.Configuration.Maps)
@@ -2729,8 +2756,14 @@ internal sealed class BotNavigator : AsyncDisposable
                 continue;
             }
 
-            var (area, rate) = HuntingSpotRating.BestSpot(this._player, candidate);
-            if (area is null || rate <= threshold || rate <= bestRate || candidate.TryGetRequirementError(this._player, out _))
+            var (area, estimate) = HuntingSpotRating.BestSpot(this._player, candidate);
+            if (area is null)
+            {
+                continue;
+            }
+
+            var rate = Measured(candidate) ?? (estimate * calibration);
+            if (rate <= threshold || rate <= bestRate || candidate.TryGetRequirementError(this._player, out _))
             {
                 continue;
             }
@@ -2749,12 +2782,13 @@ internal sealed class BotNavigator : AsyncDisposable
         if (mapDefinition is not null)
         {
             this._player.Logger.LogInformation(
-                "Hunt {Character}: {Map} promises {Rate:0} exp/min against {Here:0} on {Current}.",
+                "Hunt {Character}: {Map} promises {Rate:0} exp/min against {Here:0} on {Current} (measured or estimate x {Calibration:0.00}).",
                 this._player.Name,
                 mapDefinition.Name.ValueInNeutralLanguage,
                 bestRate,
                 here,
-                current?.Name.ValueInNeutralLanguage ?? "-");
+                current?.Name.ValueInNeutralLanguage ?? "-",
+                calibration);
         }
 
         return mapDefinition is not null;

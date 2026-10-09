@@ -338,7 +338,7 @@ public class Armors : ArmorInitializerBase
         this.CreateBoots(48, "Phantom Boots", 94, 44, 0, 86, 0, 62, 19, 165, 0, 0, 0, 0, 0, 1, 0, 0, 0);
         this.CreateBoots(49, "Seraphim Boots", 97, 42, 0, 86, 0, 55, 197, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0);
         this.CreateBoots(50, "Faith Boots", 92, 35, 0, 86, 0, 32, 29, 138, 0, 0, 0, 0, 1, 0, 0, 0, 0);
-        this.CreateBoots(51, "Phaewang Boots", 98, 38, 0, 86, 0, 105, 38, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+        this.CreateBoots(51, "Paewang Boots", 98, 38, 0, 86, 0, 105, 38, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0);
         this.CreateBoots(52, "Hades Boots", 94, 34, 0, 86, 0, 60, 15, 181, 0, 0, 1, 0, 0, 0, 0, 0, 0);
         this.CreateBoots(59, "Sacred Boots", 50, 20, 0, 52, 1, 85, 0, 0, 75, 0, 0, 0, 0, 0, 0, 0, 1);
         this.CreateBoots(60, "Storm Hard Boots", 62, 28, 0, 68, 1, 100, 0, 0, 90, 0, 0, 0, 0, 0, 0, 0, 1);

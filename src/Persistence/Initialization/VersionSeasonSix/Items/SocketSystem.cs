@@ -176,7 +176,7 @@ public class SocketSystem : InitializerBase
         this.AddArmorSockets(7, 46); // Brave Helm
         this.AddArmorSockets(7, 49); // Seraphim Helm
         this.AddArmorSockets(7, 50); // Faith Helm
-        this.AddArmorSockets(7, 51); // Phaewang Helm
+        this.AddArmorSockets(7, 51); // Paewang Helm
         this.AddArmorSockets(7, 52); // Hades Helm
         this.AddArmorSockets(7, 53); // Queen Helm
         this.AddArmorSockets(8, 45); // Titan Armor
@@ -185,7 +185,7 @@ public class SocketSystem : InitializerBase
         this.AddArmorSockets(8, 48); // Phantom Armor
         this.AddArmorSockets(8, 49); // Seraphim Armor
         this.AddArmorSockets(8, 50); // Faith Armor
-        this.AddArmorSockets(8, 51); // Phaewang Armor
+        this.AddArmorSockets(8, 51); // Paewang Armor
         this.AddArmorSockets(8, 52); // Hades Armor
         this.AddArmorSockets(8, 53); // Queen Armor
         this.AddArmorSockets(9, 45); // Titan Pants
@@ -194,7 +194,7 @@ public class SocketSystem : InitializerBase
         this.AddArmorSockets(9, 48); // Phantom Pants
         this.AddArmorSockets(9, 49); // Seraphim Pants
         this.AddArmorSockets(9, 50); // Faith Pants
-        this.AddArmorSockets(9, 51); // Phaewang Pants
+        this.AddArmorSockets(9, 51); // Paewang Pants
         this.AddArmorSockets(9, 52); // Hades Pants
         this.AddArmorSockets(9, 53); // Queen Pants
         this.AddArmorSockets(10, 45); // Titan Gloves
@@ -203,7 +203,7 @@ public class SocketSystem : InitializerBase
         this.AddArmorSockets(10, 48); // Phantom Gloves
         this.AddArmorSockets(10, 49); // Seraphim Gloves
         this.AddArmorSockets(10, 50); // Faith Gloves
-        this.AddArmorSockets(10, 51); // Phaewang Gloves
+        this.AddArmorSockets(10, 51); // Paewang Gloves
         this.AddArmorSockets(10, 52); // Hades Gloves
         this.AddArmorSockets(10, 53); // Queen Gloves
         this.AddArmorSockets(11, 45); // Titan Boots
@@ -212,7 +212,7 @@ public class SocketSystem : InitializerBase
         this.AddArmorSockets(11, 48); // Phantom Boots
         this.AddArmorSockets(11, 49); // Seraphim Boots
         this.AddArmorSockets(11, 50); // Faith Boots
-        this.AddArmorSockets(11, 51); // Phaewang Boots
+        this.AddArmorSockets(11, 51); // Paewang Boots
         this.AddArmorSockets(11, 52); // Hades Boots
         this.AddArmorSockets(11, 53); // Queen Boots
     }

@@ -16,6 +16,12 @@ public sealed class ItemPickupHandler
 {
     private const byte MinPickupRange = 1;
 
+    /// <summary>
+    /// MUIdle (HUNT v2): how long a drop which the pickup refused is left alone. Online, every refusal
+    /// reaches the player's screen as a message, and the handler tries every two ticks a second.
+    /// </summary>
+    private static readonly TimeSpan RefusedDropPause = TimeSpan.FromSeconds(30);
+
     private static readonly PickupItemAction PickupAction = new();
 
     private static readonly HashSet<ItemIdentifier> Jewels =
@@ -34,6 +40,7 @@ public sealed class ItemPickupHandler
 
     private readonly Player _player;
     private readonly IMuHelperSettings? _config;
+    private readonly Dictionary<ushort, DateTime> _refusedUntil = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ItemPickupHandler"/> class.
@@ -64,13 +71,54 @@ public sealed class ItemPickupHandler
         byte range = (byte)Math.Max(this._config.ObtainRange, MinPickupRange);
         var drops = map.GetDropsInRange(this._player.Position, range);
 
-        foreach (var drop in drops)
+        var now = DateTime.UtcNow;
+        if (this._refusedUntil.Count > 64)
         {
-            if (this.ShouldPickUpDrop(drop))
+            foreach (var expired in this._refusedUntil.Where(r => r.Value <= now).Select(r => r.Key).ToList())
             {
-                await PickupAction.PickupItemAsync(this._player, drop.Id).ConfigureAwait(false);
+                this._refusedUntil.Remove(expired);
             }
         }
+
+        foreach (var drop in drops)
+        {
+            if (!this.ShouldPickUpDrop(drop)
+                || (this._refusedUntil.TryGetValue(drop.Id, out var until) && until > now))
+            {
+                continue;
+            }
+
+            // MUIdle (HUNT v2): what the pickup would refuse anyway is not asked for - another's loot
+            // while its owner still has the priority, an item without room in the bag.
+            if (!this.CanTake(drop))
+            {
+                this._refusedUntil[drop.Id] = now + RefusedDropPause;
+                continue;
+            }
+
+            await PickupAction.PickupItemAsync(this._player, drop.Id).ConfigureAwait(false);
+            if (map.GetDrop(drop.Id) is not null)
+            {
+                // Still lying there: refused for a reason of its own (a quest item of another quest...).
+                this._refusedUntil[drop.Id] = now + RefusedDropPause;
+            }
+        }
+    }
+
+    private bool CanTake(IIdentifiable drop)
+    {
+        if (drop is not DroppedItem droppedItem)
+        {
+            return true;
+        }
+
+        if (!droppedItem.IsPlayerAnOwner(this._player) && droppedItem.IsOwnerPickupPriorityActive)
+        {
+            return false;
+        }
+
+        // A stackable item may still go onto a stack of its kind.
+        return droppedItem.Item.IsStackable() || this._player.Inventory?.CheckInvSpace(droppedItem.Item) is not null;
     }
 
     private static bool IsJewel(Item item)

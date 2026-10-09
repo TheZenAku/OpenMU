@@ -155,6 +155,7 @@ public sealed class CombatHandler
     private List<int> _comboChain = [];
     private bool _tickComboComputed;
     private DateTime _comboStartedUtc = DateTime.MinValue;
+    private int _combosFinished;
 
     private DateTime _engageAtUtc = DateTime.MinValue;
 
@@ -1308,6 +1309,7 @@ public sealed class CombatHandler
         }
 
         var skillId = (ushort)ids[this._currentComboStep % ids.Count];
+        var finalStep = this._currentComboStep % ids.Count == ids.Count - 1;
         var skillEntry = this._player.SkillList?.GetSkill(skillId);
 
         if (skillEntry?.Skill is { } currentSkill && !this._currentTarget.IsInRange(this._player.Position, (byte)currentSkill.Range + 1))
@@ -1334,6 +1336,7 @@ public sealed class CombatHandler
             {
                 this._skillCooldownTicks = ComboFinisherDelayTicks;
                 this._currentComboStep = 0;
+                this.NoteComboFinished(ids);
             }
             else
             {
@@ -1350,12 +1353,31 @@ public sealed class CombatHandler
             {
                 this._skillCooldownTicks = ComboFinisherDelayTicks;
                 this._currentComboStep = 0;
+                if (finalStep)
+                {
+                    // Back at the start after the last step: the combo finished.
+                    this.NoteComboFinished(ids);
+                }
             }
             else
             {
                 this._skillCooldownTicks = InterSkillDelayTicks;
                 this._currentComboStep++;
             }
+        }
+    }
+
+    /// <summary>
+    /// MUIdle (HUNT v2): one log line for the first combo of a session, and one every hundred after it -
+    /// enough to see the combos happen without a line per strike.
+    /// </summary>
+    private void NoteComboFinished(IReadOnlyList<int> ids)
+    {
+        this._combosFinished++;
+        if (this._combosFinished == 1 || this._combosFinished % 100 == 0)
+        {
+            var names = ids.Select(id => this._player.SkillList?.GetSkill((ushort)id)?.Skill?.Name.ToString() ?? $"#{id}");
+            this._player.Logger.LogInformation("Hunt {Character}: combo {Count} ({Skills}).", this._player.Name, this._combosFinished, string.Join(" > ", names));
         }
     }
 

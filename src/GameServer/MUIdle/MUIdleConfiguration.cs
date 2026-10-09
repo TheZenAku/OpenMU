@@ -131,4 +131,35 @@ public class MUIdleConfiguration
     /// Gets or sets the most catch-up and newcomer bonus together (1.0 = +100 %).
     /// </summary>
     public double MaximumBonus { get; set; } = 1.0;
+
+    /// <summary>
+    /// Gets or sets how many inventory pages (8 x 8) every character has for free (D33): page I is the
+    /// classic inventory, pages II and III are two inventory extensions each.
+    /// </summary>
+    public int FreeInventoryPages { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets the Zen price of inventory page III (D33).
+    /// </summary>
+    public int InventoryPage3Price { get; set; } = 1_000_000;
+
+    /// <summary>
+    /// Gets or sets the Zen price of inventory page IV (D33).
+    /// </summary>
+    public int InventoryPage4Price { get; set; } = 3_000_000;
+
+    /// <summary>
+    /// Gets or sets the Zen price of inventory page V (D33).
+    /// </summary>
+    public int InventoryPage5Price { get; set; } = 6_000_000;
+
+    /// <summary>
+    /// Gets or sets the Zen price of inventory page VI (D33).
+    /// </summary>
+    public int InventoryPage6Price { get; set; } = 12_000_000;
+
+    /// <summary>
+    /// Gets or sets the Zen price of inventory page VII (D33).
+    /// </summary>
+    public int InventoryPage7Price { get; set; } = 25_000_000;
 }

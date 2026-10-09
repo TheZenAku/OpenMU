@@ -228,6 +228,7 @@ internal static class MUIdleSessions
 
         // An offline hunter fights with the class skills too, also one restored before its owner logged in again.
         await MUIdleClassSkills.GrantAsync(hunter, GetConfiguration(gameContext)).ConfigureAwait(false);
+        MUIdleInventory.GrantFreePages(hunter, GetConfiguration(gameContext));
         return hunter;
     }
 
@@ -354,7 +355,8 @@ internal static class MUIdleSessions
 
         // The class skills from the start (D22): a new character at its first entry, an older one now.
         await MUIdleClassSkills.GrantAsync(player, configuration).ConfigureAwait(false);
-        var existing = await player.PersistenceContext.GetMUIdleCharacterStateAsync(character.Id).ConfigureAwait(false);
+        MUIdleInventory.GrantFreePages(player, configuration);
+        var existing =await player.PersistenceContext.GetMUIdleCharacterStateAsync(character.Id).ConfigureAwait(false);
         var state = existing ?? await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
         var summary = OfflineSessionStatistics.Parse(state.OfflineStatisticsJson);
 
@@ -442,6 +444,7 @@ internal static class MUIdleSessions
             progression = MUIdleSeason.Snapshot(player, GetConfiguration(player.GameContext)),
             contracts = MUIdleContracts.Snapshot(player, state),
             quest = MUIdleQuests.Snapshot(player),
+            inventory = MUIdleInventory.Snapshot(player, GetConfiguration(player.GameContext)),
         });
         return MUIdlePackets.SendJsonAsync(player, MUIdlePackets.StateSubCode, json);
     }

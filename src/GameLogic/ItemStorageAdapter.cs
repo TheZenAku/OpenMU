@@ -36,20 +36,29 @@ public class ItemStorageAdapter : ItemStorage
     public ItemStorage ActualStorage { get; }
 
     /// <summary>
+    /// MUIdle (D33): widens the slots of this storage to an inventory which got extensions while its
+    /// character is online (an inventory page bought). Without it, items on the new slots are added to
+    /// the actual storage but never enumerated or removed through this one.
+    /// </summary>
+    /// <param name="itemSlotCount">The item slot count.</param>
+    internal void SetItemSlotCount(byte itemSlotCount) => this._adapter.ItemSlotCount = itemSlotCount;
+
+    /// <summary>
     /// A collection adapter which just returns items between certain item slots.
     /// </summary>
     private class CollectionAdapter : ICollection<Item>
     {
         private readonly ICollection<Item> _actualCollection;
         private readonly byte _firstItemSlot;
-        private readonly byte _itemSlotCount;
 
         public CollectionAdapter(ICollection<Item> actualCollection, byte firstItemSlot, byte itemSlotCount)
         {
             this._actualCollection = actualCollection;
             this._firstItemSlot = firstItemSlot;
-            this._itemSlotCount = itemSlotCount;
+            this.ItemSlotCount = itemSlotCount;
         }
+
+        public byte ItemSlotCount { get; set; }
 
         /// <inheritdoc />
         public int Count => this._actualCollection.Count(i => this.IsSlotOfThisStorage(i.ItemSlot));
@@ -109,7 +118,7 @@ public class ItemStorageAdapter : ItemStorage
 
         private bool IsSlotOfThisStorage(byte itemSlot)
         {
-            return itemSlot >= this._firstItemSlot && itemSlot < this._firstItemSlot + this._itemSlotCount;
+            return itemSlot >= this._firstItemSlot && itemSlot < this._firstItemSlot + this.ItemSlotCount;
         }
     }
 }

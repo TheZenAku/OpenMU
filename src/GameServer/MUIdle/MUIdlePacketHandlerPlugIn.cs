@@ -93,6 +93,37 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                     }
 
                     break;
+                case MUIdlePackets.SellItemsSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        if (request.RootElement.TryGetProperty("slots", out var slotsElement) && slotsElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var slots = slotsElement.EnumerateArray()
+                                .Select(e => e.TryGetByte(out var s) ? s : (byte?)null)
+                                .OfType<byte>()
+                                .ToList();
+                            var junkOnly = request.RootElement.TryGetProperty("junk", out var junk) && junk.ValueKind == JsonValueKind.True;
+                            await MUIdleInventory.SellAsync(remotePlayer, slots, junkOnly).ConfigureAwait(false);
+                        }
+                    }
+
+                    break;
+                case MUIdlePackets.RequestJunkPreviewSubCode:
+                    await MUIdleInventory.SendJunkPreviewAsync(remotePlayer).ConfigureAwait(false);
+                    break;
+                case MUIdlePackets.RepairAllSubCode:
+                    await MUIdleInventory.RepairAllAsync(remotePlayer).ConfigureAwait(false);
+                    break;
+                case MUIdlePackets.BuyInventoryPageSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        if (request.RootElement.TryGetProperty("page", out var pageElement) && pageElement.TryGetInt32(out var page))
+                        {
+                            await MUIdleInventory.BuyPageAsync(remotePlayer, page).ConfigureAwait(false);
+                        }
+                    }
+
+                    break;
             }
         }
         catch (JsonException)

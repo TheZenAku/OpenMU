@@ -140,6 +140,31 @@ public class InventoryStorage : Storage, IInventoryStorage
         return this.EquippedItemsChanged?.Invoke(new ItemEventArgs(item, isEquipped)) ?? ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// MUIdle (D33): adds the extensions the character got while online (an inventory page bought, the
+    /// free pages granted at the first entry) - they were only created with the storage before.
+    /// Extensions are never taken away.
+    /// </summary>
+    public void UpdateExtensions()
+    {
+        var count = Math.Min(this._player.SelectedCharacter?.InventoryExtensions ?? 0, MaximumNumberOfExtensions);
+        var extensions = this.Extensions.ToList();
+        if (count <= extensions.Count)
+        {
+            return;
+        }
+
+        (this.ItemStorage as ItemStorageAdapter)?.SetItemSlotCount(GetInventorySize(count));
+        var sizePerExtension = RowsOfOneExtension * RowSize;
+        for (int i = extensions.Count; i < count; i++)
+        {
+            var offset = FirstExtensionItemSlotIndex + (i * sizePerExtension);
+            extensions.Add(new Storage(sizePerExtension, 0, offset, this.ItemStorage));
+        }
+
+        this.Extensions = extensions;
+    }
+
     private bool IsWearingSlot(int slot)
     {
         return slot >= FirstEquippableItemSlotIndex && slot <= LastEquippableItemSlotIndex;

@@ -30,6 +30,12 @@ internal static class MUIdlePackets
     /// <summary>Server to client: the odds of a mix of the items in the crafting dialog (<see cref="MUIdleMixPreview"/>).</summary>
     public const byte MixPreviewSubCode = 0x04;
 
+    /// <summary>Server to client: the outcome of an inventory action (<see cref="MUIdleInventory"/>).</summary>
+    public const byte InventoryResultSubCode = 0x05;
+
+    /// <summary>Server to client: the junk of the inventory, slots and price (<see cref="MUIdleInventory"/>).</summary>
+    public const byte JunkPreviewSubCode = 0x06;
+
     /// <summary>Client to server: save the idle settings (JSON of <see cref="MUIdleSettings"/>).</summary>
     public const byte SaveSettingsSubCode = 0x10;
 
@@ -50,6 +56,18 @@ internal static class MUIdlePackets
 
     /// <summary>Client to server: split pieces off a stack in the inventory (<c>{"slot":14,"amount":5}</c>).</summary>
     public const byte SplitStackSubCode = 0x16;
+
+    /// <summary>Client to server: sell inventory items, anywhere (<c>{"slots":[12,40]}</c>).</summary>
+    public const byte SellItemsSubCode = 0x17;
+
+    /// <summary>Client to server: list the junk of the inventory (answered with <see cref="JunkPreviewSubCode"/>).</summary>
+    public const byte RequestJunkPreviewSubCode = 0x18;
+
+    /// <summary>Client to server: repair the equipped items, anywhere.</summary>
+    public const byte RepairAllSubCode = 0x19;
+
+    /// <summary>Client to server: buy the next inventory page (<c>{"page":3}</c>).</summary>
+    public const byte BuyInventoryPageSubCode = 0x1A;
 
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;

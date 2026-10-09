@@ -36,6 +36,9 @@ internal static class MUIdleHuntPolicy
             Revenge = false,
             BuffTrips = true,
 
+            // HUNT v2: maps and grounds by the experience per minute they promise (HuntingSpotRating).
+            RateByExperience = true,
+
             // Manual: never changes maps. Auto: the navigator's own choice. A pinned map: there, when it can.
             WarpBetweenMaps = settings.AutoMapSelection || settings.PreferredMap is not null,
             PinnedMap = settings.AutoMapSelection ? null : settings.PreferredMap,

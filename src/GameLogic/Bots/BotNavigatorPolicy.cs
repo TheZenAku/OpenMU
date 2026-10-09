@@ -138,6 +138,14 @@ public sealed record BotNavigatorPolicy
     public Func<string, bool>? AvoidMap { get; init; }
 
     /// <summary>
+    /// MUIdle (HUNT v2): gets a value indicating whether maps and hunting grounds are chosen by the
+    /// experience per minute they promise (<see cref="HuntingSpotRating"/>) - the best one, without the
+    /// spread over the runners-up that keeps bots from crowding one map - instead of by the level of the
+    /// strongest monster the character fights safely. Bots keep the level rating.
+    /// </summary>
+    public bool RateByExperience { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

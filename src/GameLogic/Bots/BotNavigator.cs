@@ -2483,6 +2483,15 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private int MasterExperienceFloor() => HuntingMapRating.MasterExperienceFloor(this._player);
 
+    /// <summary>MUIdle (HUNT v2): how much more experience per minute another map must promise before the hunt moves there.</summary>
+    private const double RicherMapMargin = 1.25;
+
+    /// <summary>MUIdle (HUNT v2): the grounds within this share of the best are all good choices (some spread over a map).</summary>
+    private const double RichGroundShare = 0.85;
+
+    /// <summary>MUIdle (HUNT v2): the stay a walk to a ground is spread over.</summary>
+    private const double GroundStaySeconds = 600;
+
     /// <summary>
     /// The level of the strongest monster on the map which this bot can safely fight (judged by the
     /// monster's real damage against the bot's defense and health, see <see cref="CombatHandler.IsSafeTarget"/>);
@@ -2555,6 +2564,12 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <param name="monsterLevel">The level of the strongest safe monster there.</param>
     private bool TryPickEasierMap(out WarpInfo warp, out GameMapDefinition mapDefinition, out int monsterLevel)
     {
+        // Experience rated: whichever map pays at all, the most first (this one pays nothing).
+        if (this._policy.RateByExperience)
+        {
+            return this.TryPickRicherMap(true, out warp, out mapDefinition, out monsterLevel);
+        }
+
         warp = default!;
         mapDefinition = default!;
         monsterLevel = 0;
@@ -2604,6 +2619,11 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private bool TryPickBetterMap(bool escape, out WarpInfo warp, out GameMapDefinition mapDefinition, out int monsterLevel)
     {
+        if (this._policy.RateByExperience)
+        {
+            return this.TryPickRicherMap(escape, out warp, out mapDefinition, out monsterLevel);
+        }
+
         // A mastered bot earns nothing below the master-experience floor, so it first looks for a map
         // which pays at all. Only when no map within its reach offers monsters above the floor that it
         // can safely fight does it fall back to hunting by safety alone: standing on a map it cannot
@@ -2681,6 +2701,87 @@ internal sealed class BotNavigator : AsyncDisposable
     /// being slaughtered. If nothing on the map is safe, it falls back to the weakest monsters available
     /// (the bot should warp away anyway).
     /// </summary>
+    /// <summary>
+    /// MUIdle (HUNT v2): the map whose best spot promises the most experience per minute
+    /// (<see cref="HuntingSpotRating"/>), if it beats this map's best by <see cref="RicherMapMargin"/> -
+    /// or any map that pays, when this one pays nothing (<paramref name="escape"/>). No spread over the
+    /// runners-up: the owner wants the best map.
+    /// </summary>
+    private bool TryPickRicherMap(bool escape, out WarpInfo warp, out GameMapDefinition mapDefinition, out int monsterLevel)
+    {
+        warp = default!;
+        mapDefinition = default!;
+        monsterLevel = 0;
+
+        var current = this._player.CurrentMap?.Definition;
+        var here = current is null ? 0 : HuntingSpotRating.BestSpot(this._player, current).ExperiencePerMinute;
+        var threshold = escape || here <= 0 ? 0 : here * RicherMapMargin;
+        var bestRate = 0.0;
+        foreach (var candidate in this._player.GameContext.Configuration.Maps)
+        {
+            if (ReferenceEquals(candidate, current) || this.IsAvoided(candidate))
+            {
+                continue;
+            }
+
+            if (!escape && this._barrenUntil.TryGetValue(candidate.Number, out var barrenUntil) && this._timeProvider.GetUtcNow() < barrenUntil)
+            {
+                continue;
+            }
+
+            var (area, rate) = HuntingSpotRating.BestSpot(this._player, candidate);
+            if (area is null || rate <= threshold || rate <= bestRate || candidate.TryGetRequirementError(this._player, out _))
+            {
+                continue;
+            }
+
+            if (this.TryGetLegalWarp(candidate, out var candidateWarp)
+                && this.CanAffordWarp(candidateWarp)
+                && HasWalkableSpawnGate(candidate))
+            {
+                warp = candidateWarp;
+                mapDefinition = candidate;
+                monsterLevel = GetMonsterLevel(area.MonsterDefinition!);
+                bestRate = rate;
+            }
+        }
+
+        if (mapDefinition is not null)
+        {
+            this._player.Logger.LogInformation(
+                "Hunt {Character}: {Map} promises {Rate:0} exp/min against {Here:0} on {Current}.",
+                this._player.Name,
+                mapDefinition.Name.ValueInNeutralLanguage,
+                bestRate,
+                here,
+                current?.Name.ValueInNeutralLanguage ?? "-");
+        }
+
+        return mapDefinition is not null;
+    }
+
+    /// <summary>
+    /// MUIdle (HUNT v2): the safe grounds of the map which promise the most experience per minute from
+    /// where the character stands - the walk there counts against a ground, spread over a stay of
+    /// <see cref="GroundStaySeconds"/> - those within <see cref="RichGroundShare"/> of the best.
+    /// </summary>
+    private List<(MonsterSpawnArea Area, int Level)> RichestGrounds(GameMapDefinition map, List<(MonsterSpawnArea Area, int Level)> safe)
+    {
+        var position = this._player.Position;
+        var rated = safe
+            .Select(x => (x.Area, x.Level, Rate: HuntingSpotRating.ExperiencePerMinute(this._player, map, x.Area)
+                                               * GroundStaySeconds / (GroundStaySeconds + (GroundDistance(x.Area, position) / HuntingSpotRating.TilesPerSecond))))
+            .Where(x => x.Rate > 0)
+            .ToList();
+        if (rated.Count == 0)
+        {
+            return [];
+        }
+
+        var best = rated.Max(x => x.Rate);
+        return rated.Where(x => x.Rate >= best * RichGroundShare).Select(x => (x.Area, x.Level)).ToList();
+    }
+
     private bool TryPickHuntingGround(GameMap map, out Point ground, out int groundLevel)
     {
         ground = default;
@@ -2718,8 +2819,15 @@ internal sealed class BotNavigator : AsyncDisposable
         var wanted = this._policy.PreferredMonsterLevels?.Invoke();
         var preferred = wanted is { } w ? safe.Where(x => x.Level >= w.Min && x.Level <= w.Max).ToList() : [];
 
+        // MUIdle (HUNT v2): the grounds paying the most experience per minute (unless a quest band comes first).
+        var rich = this._policy.RateByExperience && preferred.Count == 0 ? this.RichestGrounds(map.Definition, safe) : [];
+
         List<(MonsterSpawnArea Area, int Level)> band;
-        if (preferred.Count > 0)
+        if (rich.Count > 0)
+        {
+            band = rich;
+        }
+        else if (preferred.Count > 0)
         {
             var strongest = preferred.Max(x => x.Level);
             band = preferred.Where(x => x.Level >= strongest - BandWidth).ToList();

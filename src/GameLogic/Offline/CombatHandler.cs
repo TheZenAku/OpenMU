@@ -411,6 +411,22 @@ public sealed class CombatHandler
         }
     }
 
+    /// <summary>
+    /// MUIdle (HUNT v2): what a kill of the monster takes - the hits of the character's attack power above
+    /// the monster's defense against its health - and whether it is a safe target at all; the experience
+    /// per minute of a hunting spot is built on it (<see cref="Bots.HuntingSpotRating"/>).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="monster">The monster.</param>
+    /// <returns>The hits to kill (infinite when the attack does not get through), whether it is safe, and its level.</returns>
+    internal static (float HitsToKill, bool Safe, int Level) EstimateKill(Player player, MonsterDefinition monster)
+    {
+        var (level, _, defense, health, _) = GetMonsterCombatStats(monster);
+        var net = GetAttackPower(player) - defense;
+        var hits = net > 0 ? MathF.Max(1f, health / net) : float.PositiveInfinity;
+        return (hits, IsSafeTarget(player, monster), level);
+    }
+
     private static (int Level, float AverageDamage, float Defense, float Health, float AttackRate) GetMonsterCombatStats(MonsterDefinition monster)
     {
         return MonsterStatsCache.GetOrAdd(

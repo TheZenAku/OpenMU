@@ -94,7 +94,7 @@ internal static class BotResetHandler
     /// <param name="configuration">The reset configuration.</param>
     /// <param name="payCosts">Whether the configured costs (zen, reset items) are consumed like for a human player.</param>
     /// <returns>True, if the reset was performed.</returns>
-    public static async ValueTask<bool> TryResetAsync(OfflinePlayer player, ResetConfiguration configuration, bool payCosts)
+    public static async ValueTask<bool> TryResetAsync(Player player, ResetConfiguration configuration, bool payCosts)
     {
         if (player.Attributes is not { } attributes
             || player.SelectedCharacter is not { CharacterClass: not null } character
@@ -168,7 +168,7 @@ internal static class BotResetHandler
     /// player: the required zen and the required amount of the configured reset item. Only used when
     /// <see cref="BotConfiguration.BotsPayResetCosts"/> is enabled.
     /// </summary>
-    private static async ValueTask<bool> TryConsumeCostsAsync(OfflinePlayer player, ResetConfiguration configuration, ResetProgression resetProgression)
+    private static async ValueTask<bool> TryConsumeCostsAsync(Player player, ResetConfiguration configuration, ResetProgression resetProgression)
     {
         IList<Item> requiredItems = [];
         if (resetProgression.RequiredItemAmount > 0 && configuration.RequiredResetItem is { } requiredDefinition)
@@ -203,7 +203,7 @@ internal static class BotResetHandler
     /// Warps the bot to a spawn gate of its class home map, the live-ghost equivalent of the
     /// position rewrite <see cref="ResetCharacterAction"/> performs before logging a player out.
     /// </summary>
-    private static async ValueTask MoveHomeAsync(OfflinePlayer player)
+    private static async ValueTask MoveHomeAsync(Player player)
     {
         var homeMapDefinition = player.SelectedCharacter?.CharacterClass?.HomeMap;
         if (homeMapDefinition is null

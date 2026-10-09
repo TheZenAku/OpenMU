@@ -62,7 +62,7 @@ internal static class BotShoppingHandler
     /// </summary>
     /// <param name="player">The bot player.</param>
     /// <param name="policy">What the trip may do; null for the unrestricted bot policy.</param>
-    public static bool NeedsShopping(OfflinePlayer player, BotNavigatorPolicy? policy = null)
+    public static bool NeedsShopping(Player player, BotNavigatorPolicy? policy = null)
     {
         policy ??= BotNavigatorPolicy.Bot;
         if (player.Inventory is not { } inventory)
@@ -121,7 +121,7 @@ internal static class BotShoppingHandler
     /// </summary>
     /// <param name="player">The bot player, whose current needs rank the merchants.</param>
     /// <param name="map">The game map.</param>
-    public static Point? FindMerchantPosition(OfflinePlayer player, GameMap map)
+    public static Point? FindMerchantPosition(Player player, GameMap map)
     {
         // Covers the whole 256x256 map from its center.
         var merchants = map.GetNpcsInRange(new Point(128, 128), 256)
@@ -153,7 +153,7 @@ internal static class BotShoppingHandler
     /// <param name="merchantPosition">The position of the merchant.</param>
     /// <returns>True, if a merchant was found and the trade ran; false if no merchant is there.</returns>
     /// <param name="policy">What the trip may do; null for the unrestricted bot policy.</param>
-    public static async ValueTask<bool> TryTradeAsync(OfflinePlayer player, GameMap map, Point merchantPosition, BotNavigatorPolicy? policy = null)
+    public static async ValueTask<bool> TryTradeAsync(Player player, GameMap map, Point merchantPosition, BotNavigatorPolicy? policy = null)
     {
         policy ??= BotNavigatorPolicy.Bot;
         var merchant = map.GetNpcsInRange(merchantPosition, 4)
@@ -221,7 +221,7 @@ internal static class BotShoppingHandler
     /// Unlike a player, a bot cannot trade an excellent piece away, so hoarding one only silts up the
     /// backpack until the loot pickup stops entirely.
     /// </summary>
-    private static List<Item> GetSellableJunk(OfflinePlayer player, IStorage inventory, BotNavigatorPolicy policy)
+    private static List<Item> GetSellableJunk(Player player, IStorage inventory, BotNavigatorPolicy policy)
     {
         if (policy.IsJunk is { } isJunk)
         {
@@ -289,7 +289,7 @@ internal static class BotShoppingHandler
     /// captures as much of its loot as fits. What the limit refuses is handed back to the caller: it is
     /// offered once more after the purchases of this visit have freed some room.
     /// </summary>
-    private static async ValueTask<(int Sold, List<Item> Unsold)> SellJunkAsync(OfflinePlayer player, IStorage inventory, BotNavigatorPolicy policy)
+    private static async ValueTask<(int Sold, List<Item> Unsold)> SellJunkAsync(Player player, IStorage inventory, BotNavigatorPolicy policy)
     {
         var junk = GetSellableJunk(player, inventory, policy);
 
@@ -333,7 +333,7 @@ internal static class BotShoppingHandler
     /// kind the bot cannot use at all, or the part above its stock limit, has no use to it whatsoever,
     /// and waiting for slot pressure just parks it in the backpack for hours.
     /// </summary>
-    private static async ValueTask<(int Sold, int Discarded)> ClearUnsoldAsync(OfflinePlayer player, IStorage inventory, List<Item> unsold, BotNavigatorPolicy policy)
+    private static async ValueTask<(int Sold, int Discarded)> ClearUnsoldAsync(Player player, IStorage inventory, List<Item> unsold, BotNavigatorPolicy policy)
     {
         if (unsold.Count == 0)
         {
@@ -380,7 +380,7 @@ internal static class BotShoppingHandler
     /// multiplied by the destroyed-item penalty on top.
     /// </summary>
     /// <returns>The number of items which were repaired.</returns>
-    private static async ValueTask<int> RepairGearAsync(OfflinePlayer player)
+    private static async ValueTask<int> RepairGearAsync(Player player)
     {
         if (player.Inventory is not { } inventory)
         {
@@ -431,7 +431,7 @@ internal static class BotShoppingHandler
     /// of the best kind the merchant offers. Merchants often carry the same potion as a small and a large
     /// stack; taking the first match would buy the tiny one twenty times over.
     /// </summary>
-    private static async ValueTask<int> BuyPotionsAsync(OfflinePlayer player, ItemStorage store)
+    private static async ValueTask<int> BuyPotionsAsync(Player player, ItemStorage store)
     {
         var target = GetPotionStockTarget(player);
         var bought = 0;
@@ -464,7 +464,7 @@ internal static class BotShoppingHandler
     /// which put jewels into their shops, where it turns a bot's Zen into actual progress instead of
     /// letting it pile up against the money limit.
     /// </summary>
-    private static async ValueTask<int> BuyJewelsAsync(OfflinePlayer player, ItemStorage store)
+    private static async ValueTask<int> BuyJewelsAsync(Player player, ItemStorage store)
     {
         var bought = 0;
         var stockLimit = BotJewelHandler.GetStockLimit(player);
@@ -552,7 +552,7 @@ internal static class BotShoppingHandler
     /// run low, otherwise a jewel seller is worth the walk. Without this a bot with a full potion stock
     /// still always walked to the potion girl, past the merchant which had what it actually wanted.
     /// </summary>
-    private static int ScoreMerchant(OfflinePlayer player, ItemStorage store)
+    private static int ScoreMerchant(Player player, ItemStorage store)
     {
         var needsPotions = GetLowPotionKinds(player).Any();
         var sellsPotions = SellsPotions(store);
@@ -602,7 +602,7 @@ internal static class BotShoppingHandler
     /// Determines whether a piece of the equipped gear (pets excluded) wore down to a third of its
     /// durability, which is a reason to visit a merchant when nothing tops the gear up for free.
     /// </summary>
-    private static bool NeedsRepair(OfflinePlayer player)
+    private static bool NeedsRepair(Player player)
     {
         if (player.Inventory is not { } inventory)
         {

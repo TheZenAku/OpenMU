@@ -110,7 +110,7 @@ internal static class BotJewelHandler
     /// navigator's shopping cooldown provides the rare, player-like cadence.
     /// </summary>
     /// <param name="player">The bot player.</param>
-    public static async ValueTask TryUpgradeGearAsync(OfflinePlayer player)
+    public static async ValueTask TryUpgradeGearAsync(Player player)
     {
         if (player.Inventory is null)
         {
@@ -323,7 +323,7 @@ internal static class BotJewelHandler
     /// failure's downgraded item goes back on.
     /// </summary>
     /// <returns><c>true</c>, if the jewel was actually consumed.</returns>
-    private static async ValueTask<bool> ApplyJewelAsync(OfflinePlayer player, Item jewel, Item target)
+    private static async ValueTask<bool> ApplyJewelAsync(Player player, Item jewel, Item target)
     {
         var inventory = player.Inventory!;
         var equipSlot = target.ItemSlot;

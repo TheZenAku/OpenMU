@@ -13,7 +13,7 @@ using MUnique.OpenMU.PlugIns;
 /// <summary>
 /// An offline player that continues leveling after the real client disconnects.
 /// </summary>
-public class OfflinePlayer : Player
+public class OfflinePlayer : Player, IHunter
 {
     /// <summary>
     /// A player who killed this bot this many times gets no (further) revenge: walking back a third
@@ -185,6 +185,58 @@ public class OfflinePlayer : Player
     /// ground rather than walk between hunting grounds forever).
     /// </summary>
     internal DateTime LastAttackUtc { get; set; } = DateTime.UtcNow;
+
+    /// <inheritdoc/>
+    /// <remarks>MUIdle (HUNT v2): the offline player is its own hunter.</remarks>
+    Player IHunter.Player => this;
+
+    /// <inheritdoc/>
+    System.Collections.Concurrent.ConcurrentQueue<Func<ValueTask>> IHunter.PendingBotActions => this.PendingBotActions;
+
+    /// <inheritdoc/>
+    Player? IHunter.RecentAggressor => this.RecentAggressor;
+
+    /// <inheritdoc/>
+    bool IHunter.IsOnShoppingTrip
+    {
+        get => this.IsOnShoppingTrip;
+        set => this.IsOnShoppingTrip = value;
+    }
+
+    /// <inheritdoc/>
+    bool IHunter.IsOnBuffTrip
+    {
+        get => this.IsOnBuffTrip;
+        set => this.IsOnBuffTrip = value;
+    }
+
+    /// <inheritdoc/>
+    DateTime IHunter.LastAttackUtc
+    {
+        get => this.LastAttackUtc;
+        set => this.LastAttackUtc = value;
+    }
+
+    /// <inheritdoc/>
+    bool IHunter.TryGetRevengeDestination(GameMapDefinition currentMap, out Point deathSite) => this.TryGetRevengeDestination(currentMap, out deathSite);
+
+    /// <inheritdoc/>
+    void IHunter.ExpireRevenge(string reason) => this.ExpireRevenge(reason);
+
+    /// <inheritdoc/>
+    bool IHunter.TryGetDeathSiteToAvoid(GameMapDefinition currentMap, out Point deathSite) => this.TryGetDeathSiteToAvoid(currentMap, out deathSite);
+
+    /// <inheritdoc/>
+    ValueTask IHunter.DrainPendingBotActionsAsync() => this.DrainPendingBotActionsAsync();
+
+    /// <inheritdoc/>
+    void IHunter.OnAiTickSucceeded() => this.OnAiTickSucceeded();
+
+    /// <inheritdoc/>
+    void IHunter.OnAiTickFailed() => this.OnAiTickFailed();
+
+    /// <inheritdoc/>
+    void IHunter.ArmRevengeAfterRespawn() => this.ArmRevengeAfterRespawn();
 
     /// <summary>
     /// Initializes the offline player by loading the account fresh from the database.

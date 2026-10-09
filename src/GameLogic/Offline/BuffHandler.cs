@@ -20,7 +20,7 @@ public sealed class BuffHandler
 
     private static readonly TargetedSkillDefaultPlugin DefaultPlugin = new();
 
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
     private readonly IMuHelperSettings? _config;
 
     private int _nextSlotIndex;
@@ -34,7 +34,7 @@ public sealed class BuffHandler
     /// </summary>
     /// <param name="player">The offline player.</param>
     /// <param name="config">The MU Helper configuration.</param>
-    public BuffHandler(OfflinePlayer player, IMuHelperSettings? config)
+    public BuffHandler(Player player, IMuHelperSettings? config)
     {
         this._player = player;
         this._config = config;

@@ -21,7 +21,9 @@ using System.Threading;
 /// </summary>
 public sealed class OfflinePlayerMuHelper : AsyncDisposable
 {
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
+
+    private readonly IHunter _hunter;
 
     private readonly CombatHandler _combatHandler;
 
@@ -48,18 +50,20 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
     /// Initializes a new instance of the <see cref="OfflinePlayerMuHelper"/> class.
     /// </summary>
     /// <param name="player">The offline player.</param>
-    public OfflinePlayerMuHelper(OfflinePlayer player)
+    public OfflinePlayerMuHelper(IHunter hunter)
     {
-        this._player = player;
+        this._player = hunter.Player;
+        this._hunter = hunter;
+        var player = hunter.Player;
         var config = player.MuHelperSettings;
 
         this._buffHandler = new BuffHandler(player, config);
         this._healingHandler = new HealingHandler(player, config);
         this._itemPickupHandler = new ItemPickupHandler(player, config);
-        this._movementHandler = new MovementHandler(player, config);
-        this._combatHandler = new CombatHandler(player, config, this._movementHandler);
+        this._movementHandler = new MovementHandler(hunter, config);
+        this._combatHandler = new CombatHandler(hunter, config, this._movementHandler);
         this._repairHandler = new RepairHandler(player, config);
-        this._zenHandler = new ZenConsumptionHandler(player);
+        this._zenHandler = new ZenConsumptionHandler(hunter);
         this._petHandler = new PetHandler(player, config);
 
         if (config is null)
@@ -100,7 +104,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
             }
             catch (Exception ex)
             {
-                this._player.Logger.LogError(ex, "Error in offline player helper loop task for {AccountLoginName}.", this._player.AccountLoginName);
+                this._player.Logger.LogError(ex, "Error in offline player helper loop task for {AccountLoginName}.", this._player.Account?.LoginName);
             }
         }
 
@@ -151,7 +155,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
             // this bot's periodic progress save, which runs on a separate timer. The tick has no
             // internal delays, so the lock is held only for its brief duration.
             await this._player.RunPersistenceExclusiveAsync(() => this.TickAsync(cancellationToken)).ConfigureAwait(false);
-            this._player.OnAiTickSucceeded();
+            this._hunter.OnAiTickSucceeded();
         }
         catch (OperationCanceledException)
         {
@@ -159,8 +163,8 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
         }
         catch (Exception ex)
         {
-            this._player.Logger.LogError(ex, "Error in offline player helper tick for {AccountLoginName}.", this._player.AccountLoginName);
-            this._player.OnAiTickFailed();
+            this._player.Logger.LogError(ex, "Error in offline player helper tick for {AccountLoginName}.", this._player.Account?.LoginName);
+            this._hunter.OnAiTickFailed();
         }
     }
 
@@ -168,7 +172,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
     {
         // Actions queued from outside the tick (e.g. skill learning on level-up) run here, serialized
         // with the combat handler - so nothing mutates the skill list while combat is enumerating it.
-        await this._player.DrainPendingBotActionsAsync().ConfigureAwait(false);
+        await this._hunter.DrainPendingBotActionsAsync().ConfigureAwait(false);
 
         if (await this.HandleDeathAsync().ConfigureAwait(false))
         {
@@ -187,7 +191,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
 
         if (!await this._zenHandler.DeductZenAsync().ConfigureAwait(false))
         {
-            this._player.StopReason = "zen";
+            this._hunter.StopReason = "zen";
             if (this._player.Account?.LoginName is { } loginName)
             {
                 await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);
@@ -237,15 +241,15 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
                 return true;
             }
 
-            if (this._player.RespawnAndContinue)
+            if (this._hunter.RespawnAndContinue)
             {
                 // Bots keep playing: reset the death state and re-anchor the hunting origin to the respawn
                 // position so the navigator picks a fresh hunting ground from where the bot came back to life.
                 // A death by a player's hand may have left a pending revenge - arm it now (the navigator
                 // then marches the bot back to its death site instead of picking a hunting ground).
                 this._isDead = false;
-                this._player.HuntingOrigin = this._player.Position;
-                this._player.ArmRevengeAfterRespawn();
+                this._hunter.HuntingOrigin = this._player.Position;
+                this._hunter.ArmRevengeAfterRespawn();
                 this._player.Logger.LogInformation("Bot '{Name}' respawned; resuming.", this._player.Name);
                 return false;
             }

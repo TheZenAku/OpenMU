@@ -13,7 +13,7 @@ using MUnique.OpenMU.GameLogic.PlayerActions.Items;
 /// </summary>
 internal sealed class PetHandler
 {
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
     private readonly IMuHelperSettings? _config;
     private readonly IPetCommandManager? _petCommandManager;
 
@@ -23,7 +23,7 @@ internal sealed class PetHandler
     /// <param name="player">The offline player.</param>
     /// <param name="config">The MU Helper configuration.</param>
     /// <param name="petCommandManager">Optional pet command manager for testing.</param>
-    public PetHandler(OfflinePlayer player, IMuHelperSettings? config, IPetCommandManager? petCommandManager = null)
+    public PetHandler(Player player, IMuHelperSettings? config, IPetCommandManager? petCommandManager = null)
     {
         this._player = player;
         this._config = config;
@@ -75,7 +75,7 @@ internal sealed class PetHandler
         }
         catch (Exception ex)
         {
-            this._player.Logger.LogError(ex, "Error checking pet durability for {AccountLoginName}.", this._player.AccountLoginName);
+            this._player.Logger.LogError(ex, "Error checking pet durability for {AccountLoginName}.", this._player.Account?.LoginName);
         }
     }
 
@@ -92,7 +92,7 @@ internal sealed class PetHandler
             }
             catch (Exception ex)
             {
-                this._player.Logger.LogError(ex, "Error stopping pet for {AccountLoginName}.", this._player.AccountLoginName);
+                this._player.Logger.LogError(ex, "Error stopping pet for {AccountLoginName}.", this._player.Account?.LoginName);
             }
         }
     }

@@ -45,7 +45,7 @@ internal static class BotEquipmentHandler
     /// stays in the backpack, where the next shopping trip sells it.
     /// </summary>
     /// <param name="player">The bot player whose backpack is scanned.</param>
-    public static async ValueTask TryEquipUpgradesAsync(OfflinePlayer player)
+    public static async ValueTask TryEquipUpgradesAsync(Player player)
     {
         if (player.Inventory is not { } inventory)
         {
@@ -82,7 +82,7 @@ internal static class BotEquipmentHandler
     /// time.
     /// </summary>
     /// <returns><c>true</c> if the candidate is now equipped.</returns>
-    private static async ValueTask<bool> TryApplySwapAsync(OfflinePlayer player, IStorage inventory, Item item, EquipSwap plan)
+    private static async ValueTask<bool> TryApplySwapAsync(Player player, IStorage inventory, Item item, EquipSwap plan)
     {
         var undo = new List<(Item Item, byte EquipSlot)>(2);
         foreach (var removed in plan.Removed)
@@ -128,7 +128,7 @@ internal static class BotEquipmentHandler
         return true;
     }
 
-    private static async ValueTask RollbackAsync(OfflinePlayer player, List<(Item Item, byte EquipSlot)> undo)
+    private static async ValueTask RollbackAsync(Player player, List<(Item Item, byte EquipSlot)> undo)
     {
         foreach (var (item, equipSlot) in undo)
         {

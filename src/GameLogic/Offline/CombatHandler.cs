@@ -127,7 +127,9 @@ public sealed class CombatHandler
     /// </summary>
     private static readonly ConcurrentDictionary<short, (int Level, float AverageDamage, float Defense, float Health, float AttackRate)> MonsterStatsCache = new();
 
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
+
+    private readonly IHunter _hunter;
     private readonly IMuHelperSettings? _config;
     private readonly MovementHandler _movementHandler;
     private readonly ConditionalSkillSlot[] _conditionalSkillSlots;
@@ -159,9 +161,10 @@ public sealed class CombatHandler
     /// <param name="player">The offline player.</param>
     /// <param name="config">The MU helper settings.</param>
     /// <param name="movementHandler">The movement handler.</param>
-    public CombatHandler(OfflinePlayer player, IMuHelperSettings? config, MovementHandler movementHandler)
+    public CombatHandler(IHunter hunter, IMuHelperSettings? config, MovementHandler movementHandler)
     {
-        this._player = player;
+        this._player = hunter.Player;
+        this._hunter = hunter;
         this._config = config;
         this._movementHandler = movementHandler;
         this._conditionalSkillSlots = config is null ? [] :
@@ -184,7 +187,7 @@ public sealed class CombatHandler
     /// <summary>
     /// Gets the position to hunt around. Dynamic so bots can roam between hunting grounds.
     /// </summary>
-    private Point OriginPosition => this._player.HuntingOrigin;
+    private Point OriginPosition => this._hunter.HuntingOrigin;
 
     /// <summary>
     /// Gets a value indicating whether this session animates a server-side bot rather than the offline
@@ -529,9 +532,9 @@ public sealed class CombatHandler
         }
 
         this._player.Rotation = this._player.GetDirectionTo(target);
-        this._player.LastAttackUtc = DateTime.UtcNow;
+        this._hunter.LastAttackUtc = DateTime.UtcNow;
         this._lastSkillName = skillEntry?.Skill?.Name.ValueInNeutralLanguage ?? "basic attack";
-        if (ReferenceEquals(target, this._player.PriorityTarget))
+        if (ReferenceEquals(target, this._hunter.PriorityTarget))
         {
             this._priorityAttacks++;
         }
@@ -566,7 +569,7 @@ public sealed class CombatHandler
         // outlives the game's self-defense window, and striking outside of it would turn the bot into
         // an outlaw (see BotPvpRules.IsLegalPvpTarget).
         if (this._config?.UseSelfDefense == true
-            && this._player.RecentAggressor is { } aggressor
+            && this._hunter.RecentAggressor is { } aggressor
             && aggressor.IsInRange(this._player.Position, this.HuntingRange * 2)
             && BotPvpRules.IsLegalPvpTarget(this._player, aggressor))
         {
@@ -575,7 +578,7 @@ public sealed class CombatHandler
         }
 
         // A target the session was sent for (a world boss) comes first whenever it is in range.
-        if (this._player.PriorityTarget is Monster priority && this.IsTargetStillValid(priority))
+        if (this._hunter.PriorityTarget is Monster priority && this.IsTargetStillValid(priority))
         {
             if (this.IsWithinSafeHuntLevel(priority))
             {
@@ -724,7 +727,7 @@ public sealed class CombatHandler
         }
 
         // The target it was sent for may take long to kill; that alone does not make it unsafe.
-        return IsSafeTarget(this._player, monster.Definition, requireQuickKill: !ReferenceEquals(monster, this._player.PriorityTarget));
+        return IsSafeTarget(this._player, monster.Definition, requireQuickKill: !ReferenceEquals(monster, this._hunter.PriorityTarget));
     }
 
     private async ValueTask ExecutePhysicalAttackAsync(IAttackable target)

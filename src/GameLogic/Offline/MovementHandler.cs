@@ -14,7 +14,9 @@ public sealed class MovementHandler
 {
     private const byte RegroupDistanceThreshold = 1;
 
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
+
+    private readonly IHunter _hunter;
     private readonly IMuHelperSettings? _config;
 
     private DateTime? _outOfRangeSince;
@@ -24,16 +26,17 @@ public sealed class MovementHandler
     /// </summary>
     /// <param name="player">The offline player.</param>
     /// <param name="config">The MU Helper configuration.</param>
-    public MovementHandler(OfflinePlayer player, IMuHelperSettings? config)
+    public MovementHandler(IHunter hunter, IMuHelperSettings? config)
     {
-        this._player = player;
+        this._player = hunter.Player;
+        this._hunter = hunter;
         this._config = config;
     }
 
     /// <summary>
     /// Gets the position to hunt around. Dynamic so bots can roam between hunting grounds.
     /// </summary>
-    private Point OriginPosition => this._player.HuntingOrigin;
+    private Point OriginPosition => this._hunter.HuntingOrigin;
 
     /// <summary>
     /// Gets the hunting range in tiles.

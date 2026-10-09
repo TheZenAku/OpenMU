@@ -67,7 +67,7 @@ internal static class BotSkillHandler
     /// does not meet) was never picked up in the first place.
     /// </summary>
     /// <param name="player">The bot player whose backpack is scanned.</param>
-    public static async ValueTask TryLearnSkillsAsync(OfflinePlayer player)
+    public static async ValueTask TryLearnSkillsAsync(Player player)
     {
         if (player.Inventory is not { } inventory)
         {

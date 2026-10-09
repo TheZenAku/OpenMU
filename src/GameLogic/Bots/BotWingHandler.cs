@@ -59,7 +59,7 @@ internal static class BotWingHandler
     /// evaluation cadence, queued into the MuHelper tick because equipping mounts item power-ups.
     /// </summary>
     /// <param name="player">The bot player.</param>
-    public static async ValueTask TryAdvanceWingsAsync(OfflinePlayer player)
+    public static async ValueTask TryAdvanceWingsAsync(Player player)
     {
         if (PlanNextGrant(player) is not { } plan || player.Inventory is not { } inventory)
         {
@@ -233,7 +233,7 @@ internal static class BotWingHandler
             .FirstOrDefault();
     }
 
-    private static Item CreateWings(OfflinePlayer player, (ItemDefinition Definition, byte ItemLevel, int OptionLevel, int Tier) plan)
+    private static Item CreateWings(Player player, (ItemDefinition Definition, byte ItemLevel, int OptionLevel, int Tier) plan)
     {
         var item = player.PersistenceContext.CreateNew<Item>();
         item.Definition = plan.Definition;

@@ -52,7 +52,7 @@ internal static class BotBuffHandler
     /// </summary>
     /// <param name="player">The bot player.</param>
     /// <returns>The buff and its NPC definition, or null.</returns>
-    public static (MonsterDefinition Npc, Buff Buff)? TryGetApplicableBuff(OfflinePlayer player)
+    public static (MonsterDefinition Npc, Buff Buff)? TryGetApplicableBuff(Player player)
     {
         foreach (var offer in GetBuffOffers(player.GameContext.Configuration))
         {
@@ -83,7 +83,7 @@ internal static class BotBuffHandler
     /// <param name="player">The bot player.</param>
     /// <param name="effectDef">The magic effect.</param>
     /// <returns>True, if the effect is active.</returns>
-    public static bool HasEffect(OfflinePlayer player, MagicEffectDefinition effectDef)
+    public static bool HasEffect(Player player, MagicEffectDefinition effectDef)
     {
         return player.MagicEffectList.HasEffect(effectDef);
     }
@@ -94,7 +94,7 @@ internal static class BotBuffHandler
     /// <param name="player">The bot player, whose level governs qualification.</param>
     /// <param name="map">The game map.</param>
     /// <returns>The position of a qualifying buff NPC, or null, if there is none.</returns>
-    public static Point? FindBuffNpcPosition(OfflinePlayer player, GameMap map)
+    public static Point? FindBuffNpcPosition(Player player, GameMap map)
     {
         // The bot qualifies for the buff of one specific NPC definition; look for a live instance of
         // exactly that dialog NPC on the map (the Elf Soldiers on the maps share the definition).
@@ -117,7 +117,7 @@ internal static class BotBuffHandler
     /// <param name="map">The game map.</param>
     /// <param name="npcPosition">The position of the buff NPC.</param>
     /// <returns>True, if the buff was requested; false, if no qualifying NPC is there.</returns>
-    public static async ValueTask<bool> TryRequestBuffAsync(OfflinePlayer player, GameMap map, Point npcPosition)
+    public static async ValueTask<bool> TryRequestBuffAsync(Player player, GameMap map, Point npcPosition)
     {
         // Re-confirm at claim time: the bot only gets the buff as long as it still qualifies (the
         // effect might have been granted in the meantime, or the bot leveled out of the range).

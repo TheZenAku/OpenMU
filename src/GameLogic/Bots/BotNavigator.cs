@@ -277,7 +277,9 @@ internal sealed class BotNavigator : AsyncDisposable
 
     private static readonly ConcurrentBag<PathFinder> TravelPathFinders = CreateTravelPathFinderPool();
 
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
+
+    private readonly IHunter _hunter;
     private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _cts = new();
 
@@ -330,7 +332,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// Initializes a new instance of the <see cref="BotNavigator"/> class.
     /// </summary>
     /// <param name="player">The bot player.</param>
-    public BotNavigator(OfflinePlayer player)
+    public BotNavigator(IHunter player)
         : this(player, TimeProvider.System)
     {
     }
@@ -340,7 +342,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     /// <param name="player">The offline player.</param>
     /// <param name="policy">What the navigator may do for the player.</param>
-    public BotNavigator(OfflinePlayer player, BotNavigatorPolicy policy)
+    public BotNavigator(IHunter player, BotNavigatorPolicy policy)
         : this(player, TimeProvider.System)
     {
         this._policy = policy;
@@ -351,9 +353,10 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     /// <param name="player">The bot player.</param>
     /// <param name="timeProvider">The time provider.</param>
-    internal BotNavigator(OfflinePlayer player, TimeProvider timeProvider)
+    internal BotNavigator(IHunter player, TimeProvider timeProvider)
     {
-        this._player = player;
+        this._player = player.Player;
+        this._hunter = player;
         this._timeProvider = timeProvider;
     }
 
@@ -714,7 +717,7 @@ internal sealed class BotNavigator : AsyncDisposable
         try
         {
             await this.EvaluateAsync(cancellationToken).ConfigureAwait(false);
-            this._player.OnAiTickSucceeded();
+            this._hunter.OnAiTickSucceeded();
         }
         catch (OperationCanceledException)
         {
@@ -722,8 +725,8 @@ internal sealed class BotNavigator : AsyncDisposable
         }
         catch (Exception ex)
         {
-            this._player.Logger.LogError(ex, "Bot navigator error for {Account}.", this._player.AccountLoginName);
-            this._player.OnAiTickFailed();
+            this._player.Logger.LogError(ex, "Bot navigator error for {Account}.", this._player.Account?.LoginName);
+            this._hunter.OnAiTickFailed();
         }
         finally
         {
@@ -754,7 +757,11 @@ internal sealed class BotNavigator : AsyncDisposable
         // passed (see BotPartyHandler).
         if (this._policy.Parties)
         {
-            await BotPartyHandler.ProcessAsync(this._player).ConfigureAwait(false);
+            // Party life is a bot's (MUIdle HUNT v2: an online hunt has none).
+            if (this._hunter is OfflinePlayer partyBot)
+            {
+                await BotPartyHandler.ProcessAsync(partyBot).ConfigureAwait(false);
+            }
         }
 
         // Make sure the bot always carries healing and mana potions. Without them, the offline handlers
@@ -767,7 +774,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // A player's character never gets supplies for free - it buys them (see BotShoppingHandler).
         if (this._policy.FreeSupplies)
         {
-            this._player.PendingBotActions.Enqueue(() => this.EnsurePotionsAsync());
+            this._hunter.PendingBotActions.Enqueue(() => this.EnsurePotionsAsync());
         }
 
         // Periodically evaluate looted gear and equip upgrades (drops the replaced piece), so the bot's
@@ -776,17 +783,17 @@ internal sealed class BotNavigator : AsyncDisposable
         if (this._policy.GearProgression && DateTime.UtcNow >= this._nextEquipCheckUtc)
         {
             this._nextEquipCheckUtc = DateTime.UtcNow + EquipCheckInterval;
-            this._player.PendingBotActions.Enqueue(() => BotEquipmentHandler.TryEquipUpgradesAsync(this._player));
+            this._hunter.PendingBotActions.Enqueue(() => BotEquipmentHandler.TryEquipUpgradesAsync(this._player));
 
             // Looted skill orbs and scrolls are consumed into new skills like a human would (see
             // BotSkillHandler). Queued for the same reason: learning mutates the skill list the combat
             // handler may be enumerating on its own timer.
-            this._player.PendingBotActions.Enqueue(() => BotSkillHandler.TryLearnSkillsAsync(this._player));
+            this._hunter.PendingBotActions.Enqueue(() => BotSkillHandler.TryLearnSkillsAsync(this._player));
 
             // Wings don't drop, so the loot-driven equipment progression above never provides them;
             // they are earned at the classic level milestones instead (see BotWingHandler). Queued
             // for the same reason: equipping mount item power-ups.
-            this._player.PendingBotActions.Enqueue(() => BotWingHandler.TryAdvanceWingsAsync(this._player));
+            this._hunter.PendingBotActions.Enqueue(() => BotWingHandler.TryAdvanceWingsAsync(this._player));
         }
 
         // Keep the combat centre on the bot's current position, so the combat handler always engages
@@ -808,7 +815,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // While inside the safezone we aim it at the destination, so the combat handler does NOT
         // make the bot stand in town swinging at monsters just outside (which it can't damage from a safezone) -
         // it should simply walk out of town instead.
-        this._player.HuntingOrigin = isTetheredToLeader
+        this._hunter.HuntingOrigin = isTetheredToLeader
             ? leaderToFollow!.Position
             : inSafezone && this._hasDestination ? this._destination : this._player.Position;
 
@@ -831,7 +838,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // and its combat centre is the spot, so the targets it picks are the ones there.
         if (this._policy.Rally?.Invoke() is { } rally && rally.Map == map.Definition.Number && !inSafezone)
         {
-            this._player.HuntingOrigin = rally.Spot;
+            this._hunter.HuntingOrigin = rally.Spot;
             if (this._player.Position.EuclideanDistanceTo(rally.Spot) > RallyRange)
             {
                 // Several floors share one map id (Dungeon, Lost Tower, ...): from another floor no walk
@@ -907,7 +914,10 @@ internal sealed class BotNavigator : AsyncDisposable
         // evolution itself is handled by the feature plugin's maintenance pass because it restarts the bot.
         if (this._policy.GearProgression && BotMasterHandler.HasMasterPointsToSpend(this._player))
         {
-            this._player.PendingBotActions.Enqueue(() => BotMasterHandler.TrySpendMasterPointsAsync(this._player));
+            if (this._hunter is OfflinePlayer masterBot)
+            {
+                this._hunter.PendingBotActions.Enqueue(() => BotMasterHandler.TrySpendMasterPointsAsync(masterBot));
+            }
         }
 
         // A shopping trip (selling junk loot, restocking potions with Zen) runs before everything else,
@@ -1062,7 +1072,7 @@ internal sealed class BotNavigator : AsyncDisposable
                     // retrying twice a minute wastes its hunting time on futile marches).
                     this._player.Logger.LogDebug("Bot '{Name}' gives up its shopping trip: no route to the merchant at {Target}.", this._player.Name, target);
                     this._shoppingTarget = null;
-                    this._player.IsOnShoppingTrip = false;
+                    this._hunter.IsOnShoppingTrip = false;
                     this._nextShoppingCheckUtc = NextShoppingCheckUtc();
                 }
 
@@ -1074,10 +1084,10 @@ internal sealed class BotNavigator : AsyncDisposable
             // (the open NPC dialog only holds off the NEXT tick) - and both write through the same,
             // not-thread-safe persistence context. The same rule as for every other bot-initiated mutation,
             // see PendingBotActions. The jewels are spent right after the trade, in the same tick.
-            this._player.PendingBotActions.Enqueue(() => this.TradeAndUpgradeAsync(map, target));
+            this._hunter.PendingBotActions.Enqueue(() => this.TradeAndUpgradeAsync(map, target));
 
             this._shoppingTarget = null;
-            this._player.IsOnShoppingTrip = false;
+            this._hunter.IsOnShoppingTrip = false;
             this._nextShoppingCheckUtc = NextShoppingCheckUtc();
             this._lastMoveUtc = DateTime.UtcNow; // standing at the shop is not "stuck"
             return true;
@@ -1127,7 +1137,7 @@ internal sealed class BotNavigator : AsyncDisposable
         }
 
         this._shoppingTarget = merchantPosition;
-        this._player.IsOnShoppingTrip = true;
+        this._hunter.IsOnShoppingTrip = true;
         this._player.Logger.LogDebug("Bot '{Name}' heads to the merchant for a shopping trip.", this._player.Name);
         this.Report(BotActivity.Shopping, map.Definition.Name.ValueInNeutralLanguage);
         return true;
@@ -1198,7 +1208,7 @@ internal sealed class BotNavigator : AsyncDisposable
         }
 
         // The dialog runs in the MU Helper tick, where every bot mutation runs (see PendingBotActions).
-        this._player.PendingBotActions.Enqueue(() => this.RunErrandAsync(map, npcPosition, errand));
+        this._hunter.PendingBotActions.Enqueue(() => this.RunErrandAsync(map, npcPosition, errand));
         this._nextErrandCheckUtc = DateTime.UtcNow + ErrandSettleDelay;
         this._lastMoveUtc = DateTime.UtcNow;
         return true;
@@ -1271,7 +1281,7 @@ internal sealed class BotNavigator : AsyncDisposable
                     // retrying twice a minute wastes its hunting time on futile marches.
                     this._player.Logger.LogDebug("Bot '{Name}' gives up its buff trip: no route to the buff NPC at {Target}.", this._player.Name, target);
                     this._buffTarget = null;
-                    this._player.IsOnBuffTrip = false;
+                    this._hunter.IsOnBuffTrip = false;
                     this._nextBuffCheckUtc = NextBuffCheckUtc();
                 }
 
@@ -1281,10 +1291,10 @@ internal sealed class BotNavigator : AsyncDisposable
             // The dialog itself runs in the MU Helper tick, not here: it pauses the combat AI on the
             // next tick and applies the effect to the character, a player-state mutation which must run
             // where all other bot mutations run (see PendingBotActions).
-            this._player.PendingBotActions.Enqueue(() => this.ClaimBuffAsync(map, target));
+            this._hunter.PendingBotActions.Enqueue(() => this.ClaimBuffAsync(map, target));
 
             this._buffTarget = null;
-            this._player.IsOnBuffTrip = false;
+            this._hunter.IsOnBuffTrip = false;
             this._nextBuffCheckUtc = NextBuffCheckUtc();
             this._lastMoveUtc = DateTime.UtcNow; // standing at the buff NPC is not "stuck"
             return true;
@@ -1335,7 +1345,7 @@ internal sealed class BotNavigator : AsyncDisposable
         }
 
         this._buffTarget = buffNpcPosition;
-        this._player.IsOnBuffTrip = true;
+        this._hunter.IsOnBuffTrip = true;
         this._player.Logger.LogDebug("Bot '{Name}' heads to the buff NPC for its free buff.", this._player.Name);
         this.Report(BotActivity.Buff, map.Definition.Name.ValueInNeutralLanguage);
         return true;
@@ -1366,18 +1376,18 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <returns>True, if the revenge march consumed this tick.</returns>
     private async ValueTask<bool> TryRevengeMarchAsync(GameMap map, CancellationToken cancellationToken)
     {
-        if (!this._player.TryGetRevengeDestination(map.Definition, out var deathSite))
+        if (!this._hunter.TryGetRevengeDestination(map.Definition, out var deathSite))
         {
             return false;
         }
 
-        if (this._player.RecentAggressor is { } aggressor
+        if (this._hunter.RecentAggressor is { } aggressor
             && ReferenceEquals(aggressor.CurrentMap, map)
             && this._player.GetDistanceTo(aggressor.Position) <= TravelStopRange)
         {
             // Ran into the killer before reaching the site - that is who we came for. Stop travelling
             // and let the combat handler (which already prioritizes the aggressor) take over.
-            this._player.ExpireRevenge("the bot caught up with its killer");
+            this._hunter.ExpireRevenge("the bot caught up with its killer");
             return true;
         }
 
@@ -1385,7 +1395,7 @@ internal sealed class BotNavigator : AsyncDisposable
         {
             // Arrived. If the killer still stands here, the armed aggressor memory makes the combat
             // handler engage; otherwise the bot simply hunts on normally from this spot.
-            this._player.ExpireRevenge("the bot arrived at the death site");
+            this._hunter.ExpireRevenge("the bot arrived at the death site");
             return false;
         }
 
@@ -1395,7 +1405,7 @@ internal sealed class BotNavigator : AsyncDisposable
         {
             // No walkable route back (e.g. the respawn gate is across a river) - drop the attempt
             // instead of re-issuing an impossible walk every tick.
-            this._player.ExpireRevenge("no route back to the death site");
+            this._hunter.ExpireRevenge("no route back to the death site");
             return false;
         }
 
@@ -1413,10 +1423,10 @@ internal sealed class BotNavigator : AsyncDisposable
     private async ValueTask EvaluateInsideMiniGameAsync(GameMap map, CancellationToken cancellationToken)
     {
         // Keep the drinking supplies topped up - an event without potions ends quickly.
-        this._player.PendingBotActions.Enqueue(() => this.EnsurePotionsAsync());
+        this._hunter.PendingBotActions.Enqueue(() => this.EnsurePotionsAsync());
 
         // Fight from wherever the bot stands; the combat handler engages the targets around it.
-        this._player.HuntingOrigin = this._player.Position;
+        this._hunter.HuntingOrigin = this._player.Position;
 
         if (this._player.IsWalking)
         {
@@ -1520,7 +1530,7 @@ internal sealed class BotNavigator : AsyncDisposable
     private async ValueTask EvaluateFollowerHuntingAsync(GameMap map, Player leader, bool inSafezone, CancellationToken cancellationToken)
     {
         // Tether combat to the leader, so the bot fights what is near him instead of wandering off.
-        this._player.HuntingOrigin = leader.Position;
+        this._hunter.HuntingOrigin = leader.Position;
 
         if (inSafezone)
         {
@@ -1605,7 +1615,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // queued call re-validates the eligibility itself; if it refuses (e.g. unaffordable costs
         // when BotsPayResetCosts is enabled), the check above re-schedules a fresh grace delay.
         var player = this._player;
-        player.PendingBotActions.Enqueue(async () =>
+        this._hunter.PendingBotActions.Enqueue(async () =>
         {
             await BotResetHandler.TryResetAsync(player, resetConfiguration, payCosts).ConfigureAwait(false);
         });
@@ -1658,7 +1668,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // kind among ones it must refuse, or stronger bots empty the grounds before it arrives. The bot
         // notices the way a player would - it has not landed a hit in minutes - and steps DOWN to easier
         // ground to earn its way back up, instead of walking between hunting grounds forever.
-        var mapIsBarren = DateTime.UtcNow - this._player.LastAttackUtc > BarrenMapDuration;
+        var mapIsBarren = DateTime.UtcNow - this._hunter.LastAttackUtc > BarrenMapDuration;
 
         // A map the policy says to stay off (deadly, losing money) is left the same way: one step down.
         if (!mapIsBarren && currentMap is not null && this._policy.AvoidMap?.Invoke(currentMap.Name.ValueInNeutralLanguage) == true)
@@ -1797,7 +1807,7 @@ internal sealed class BotNavigator : AsyncDisposable
     {
         // The barren timer restarts with the move: the new map deserves the same chance to prove itself
         // before it is judged, and without this every following tick would warp again.
-        this._player.LastAttackUtc = DateTime.UtcNow;
+        this._hunter.LastAttackUtc = DateTime.UtcNow;
         this._lastWarpUtc = this._timeProvider.GetUtcNow();
         this._hasDestination = false;
         this._travelPath = null;
@@ -2729,7 +2739,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // the bot farms somewhere else instead of walking back into the same lost fight. Only if
         // EVERY candidate lies near the death site, are they all kept - relocating within the band is
         // still better than not picking any ground at all (the point pick below still steers away).
-        Point? siteToAvoid = this._player.TryGetDeathSiteToAvoid(map.Definition, out var avoidPoint) ? avoidPoint : null;
+        Point? siteToAvoid = this._hunter.TryGetDeathSiteToAvoid(map.Definition, out var avoidPoint) ? avoidPoint : null;
         if (siteToAvoid is { } avoid)
         {
             var farGrounds = band.Where(x => GroundDistance(x.Area, avoid) > DeathSiteAvoidanceRange).ToList();

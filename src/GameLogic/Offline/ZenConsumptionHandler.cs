@@ -12,7 +12,9 @@ using MUnique.OpenMU.GameLogic.Views.MuHelper;
 /// </summary>
 internal sealed class ZenConsumptionHandler
 {
-    private readonly OfflinePlayer _player;
+    private readonly Player _player;
+
+    private readonly IHunter _hunter;
     private readonly MuHelperConfiguration _configuration;
     private DateTime _lastPayTimestamp;
 
@@ -20,12 +22,13 @@ internal sealed class ZenConsumptionHandler
     /// Initializes a new instance of the <see cref="ZenConsumptionHandler"/> class.
     /// </summary>
     /// <param name="player">The player.</param>
-    public ZenConsumptionHandler(OfflinePlayer player)
+    public ZenConsumptionHandler(IHunter hunter)
     {
-        this._player = player;
-        this._configuration = player.GameContext.FeaturePlugIns.GetPlugIn<MuHelperFeaturePlugIn>()?.Configuration
+        this._player = hunter.Player;
+        this._hunter = hunter;
+        this._configuration = this._player.GameContext.FeaturePlugIns.GetPlugIn<MuHelperFeaturePlugIn>()?.Configuration
                               ?? new MuHelperConfiguration();
-        this._lastPayTimestamp = player.StartTimestamp;
+        this._lastPayTimestamp = hunter.StartTimestamp;
     }
 
     /// <summary>
@@ -47,7 +50,7 @@ internal sealed class ZenConsumptionHandler
             return true;
         }
 
-        var amount = MuHelperZenCostCalculator.Calculate(this._player, this._configuration, this._player.StartTimestamp);
+        var amount = MuHelperZenCostCalculator.Calculate(this._player, this._configuration, this._hunter.StartTimestamp);
 
         if (amount > 0 && this._player.TryRemoveMoney(amount))
         {

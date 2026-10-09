@@ -619,6 +619,7 @@ internal sealed class BotNavigator : AsyncDisposable
             this._timer?.Dispose();
             this._timer = null;
             this._cts.Dispose();
+            HuntingTargets.SetUnworthy(this._player, null);
         }
 
         base.Dispose(disposing);
@@ -835,9 +836,11 @@ internal sealed class BotNavigator : AsyncDisposable
         // Only monsters the bot would actually fight count (the combat AI ignores ones failing its
         // damage-based safety check), so a too-strong monster next to the bot neither stops its travel
         // nor suppresses the stuck watchdog.
+        this.UpdateWorthyTargets(map);
         var monstersNearby = map.GetAttackablesInRange(this._player.Position, TravelStopRange)
             .OfType<Monster>()
-            .Count(m => m.IsAlive && !m.IsAtSafezone() && m.SummonedBy is null && CombatHandler.IsSafeTarget(this._player, m.Definition));
+            .Count(m => m.IsAlive && !m.IsAtSafezone() && m.SummonedBy is null && CombatHandler.IsSafeTarget(this._player, m.Definition)
+                        && HuntingTargets.IsWorth(this._player, m));
 
         // A rally point (a live world boss) on this map: the monsters on the way do not hold the bot
         // back - it fought the entrance's trash for a quarter of an hour before. It walks to the spot,
@@ -1951,12 +1954,24 @@ internal sealed class BotNavigator : AsyncDisposable
 
         this._destination = ground;
         this._hasDestination = true;
-        this._player.Logger.LogDebug(
-            "Bot {Character} (level {Level}) heading to hunting ground {Ground} (monster level ~{MonsterLevel}).",
-            this._player.Name,
-            this.GetBotLevel(),
-            ground,
-            groundLevel);
+        if (this._policy.RateByExperience)
+        {
+            this._player.Logger.LogInformation(
+                "Hunt {Character}: heading to the ground at {Ground} on {Map} (monster level ~{MonsterLevel}).",
+                this._player.Name,
+                ground,
+                map.Definition.Name.ValueInNeutralLanguage,
+                groundLevel);
+        }
+        else
+        {
+            this._player.Logger.LogDebug(
+                "Bot {Character} (level {Level}) heading to hunting ground {Ground} (monster level ~{MonsterLevel}).",
+                this._player.Name,
+                this.GetBotLevel(),
+                ground,
+                groundLevel);
+        }
         this.Report(BotActivity.Travelling, map.Definition.Name.ValueInNeutralLanguage);
 
         if (!await this.TravelTowardAsync(map, ground, cancellationToken).ConfigureAwait(false))
@@ -2099,6 +2114,12 @@ internal sealed class BotNavigator : AsyncDisposable
             {
                 // Too dangerous (judged by its real damage, not its level) - leave it and let the warp /
                 // area logic relocate the bot to a map whose monsters it can handle.
+                continue;
+            }
+
+            if (!HuntingTargets.IsWorth(this._player, monster))
+            {
+                // MUIdle (HUNT v2): trash which pays a fraction of the best ground - walk on to the ground.
                 continue;
             }
 
@@ -2492,6 +2513,15 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <summary>MUIdle (HUNT v2): the stay a walk to a ground is spread over.</summary>
     private const double GroundStaySeconds = 600;
 
+    /// <summary>MUIdle (HUNT v2): monsters paying less than this share of the best ground are not worth the hunter's time (HuntingTargets).</summary>
+    private const double WorthyShare = 0.5;
+
+    /// <summary>MUIdle (HUNT v2): how often the monsters worth the time are judged again (level, gear and observed damage change).</summary>
+    private static readonly TimeSpan WorthyRefresh = TimeSpan.FromSeconds(60);
+
+    private GameMap? _worthyMap;
+    private DateTime _nextWorthyUtc = DateTime.MinValue;
+
     /// <summary>
     /// The level of the strongest monster on the map which this bot can safely fight (judged by the
     /// monster's real damage against the bot's defense and health, see <see cref="CombatHandler.IsSafeTarget"/>);
@@ -2782,13 +2812,14 @@ internal sealed class BotNavigator : AsyncDisposable
         if (mapDefinition is not null)
         {
             this._player.Logger.LogInformation(
-                "Hunt {Character}: {Map} promises {Rate:0} exp/min against {Here:0} on {Current} (measured or estimate x {Calibration:0.00}).",
+                "Hunt {Character}: {Map} promises {Rate:0} exp/min against {Here:0} on {Current} (measured or estimate x {Calibration:0.00}){Escape}.",
                 this._player.Name,
                 mapDefinition.Name.ValueInNeutralLanguage,
                 bestRate,
                 here,
                 current?.Name.ValueInNeutralLanguage ?? "-",
-                calibration);
+                calibration,
+                escape ? " - leaving: nothing hunted here for minutes, or nothing safe" : string.Empty);
         }
 
         return mapDefinition is not null;
@@ -2799,6 +2830,44 @@ internal sealed class BotNavigator : AsyncDisposable
     /// where the character stands - the walk there counts against a ground, spread over a stay of
     /// <see cref="GroundStaySeconds"/> - those within <see cref="RichGroundShare"/> of the best.
     /// </summary>
+    /// <summary>
+    /// MUIdle (HUNT v2): judges which monsters of the map are worth the hunter's time - those of a ground
+    /// paying at least <see cref="WorthyShare"/> of the best one - and hands the rest to <see cref="HuntingTargets"/>.
+    /// </summary>
+    private void UpdateWorthyTargets(GameMap map)
+    {
+        if (!this._policy.RateByExperience)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (ReferenceEquals(map, this._worthyMap) && now < this._nextWorthyUtc)
+        {
+            return;
+        }
+
+        this._worthyMap = map;
+        this._nextWorthyUtc = now + WorthyRefresh;
+
+        var best = new Dictionary<short, double>();
+        foreach (var area in map.Definition.MonsterSpawns)
+        {
+            if (area.MonsterDefinition is not { } monster || !this.IsPermanentMonsterSpawn(area))
+            {
+                continue;
+            }
+
+            var rate = HuntingSpotRating.ExperiencePerMinute(this._player, map.Definition, area);
+            best[monster.Number] = Math.Max(rate, best.GetValueOrDefault(monster.Number));
+        }
+
+        var top = best.Count > 0 ? best.Values.Max() : 0;
+        HuntingTargets.SetUnworthy(
+            this._player,
+            top > 0 ? best.Where(x => x.Value < top * WorthyShare).Select(x => x.Key).ToHashSet() : null);
+    }
+
     private List<(MonsterSpawnArea Area, int Level)> RichestGrounds(GameMapDefinition map, List<(MonsterSpawnArea Area, int Level)> safe)
     {
         var position = this._player.Position;

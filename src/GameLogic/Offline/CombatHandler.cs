@@ -765,7 +765,8 @@ public sealed class CombatHandler
                && !monster.IsAtSafezone()
                && monster.SummonedBy is null
                && monster.Definition.ObjectKind == NpcObjectKind.Monster
-               && this.IsWithinSafeHuntLevel(monster);
+               && this.IsWithinSafeHuntLevel(monster)
+               && HuntingTargets.IsWorth(this._player, monster);
     }
 
     /// <summary>

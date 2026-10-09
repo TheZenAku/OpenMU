@@ -444,6 +444,12 @@ internal static class BotShoppingHandler
                     break; // the merchant has none of this kind, or none the bot can afford.
                 }
 
+                // MUIdle (HUNT v2): no room for it - the merchant would refuse, and tell a player online so.
+                if (player.Inventory is { } bag && bag.CheckInvSpace(offer) is null && !bag.Items.Any(offer.CanCompletelyStackOn))
+                {
+                    break;
+                }
+
                 var moneyBefore = player.Money;
                 await BuyAction.BuyItemAsync(player, offer.ItemSlot).ConfigureAwait(false);
                 if (player.Money >= moneyBefore)

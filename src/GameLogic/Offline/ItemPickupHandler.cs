@@ -117,8 +117,14 @@ public sealed class ItemPickupHandler
             return false;
         }
 
-        // A stackable item may still go onto a stack of its kind.
-        return droppedItem.Item.IsStackable() || this._player.Inventory?.CheckInvSpace(droppedItem.Item) is not null;
+        if (this._player.Inventory is not { } inventory || inventory.CheckInvSpace(droppedItem.Item) is not null)
+        {
+            return true;
+        }
+
+        // No free square: a stackable item still goes onto a stack of its kind with room for all of it.
+        var item = droppedItem.Item;
+        return item.IsStackable() && inventory.Items.Any(item.CanCompletelyStackOn);
     }
 
     private static bool IsJewel(Item item)

@@ -104,6 +104,40 @@ public class CombatHandlerTests
     }
 
     /// <summary>
+    /// MUIdle (HUNT v2): a monster the navigator judged not worth the time (<see cref="HuntingTargets"/>)
+    /// is left alone - the hunter neither walks to it nor strikes it.
+    /// </summary>
+    [Test]
+    public async ValueTask PerformAttackAsync_IgnoresUnworthyMonsterAsync()
+    {
+        var player = await this.CreateOfflinePlayerAsync().ConfigureAwait(false);
+        player.Position = this._origin;
+
+        var monster = await this.CreateMonsterAsync(new Point(105, 105)).ConfigureAwait(false);
+        await player.CurrentMap!.AddAsync(monster).ConfigureAwait(false);
+        HuntingTargets.SetUnworthy(player, [monster.Definition.Number]);
+
+        var config = new MuHelperSettings { HuntingRange = 10 };
+        player.HuntingOrigin = this._origin;
+        var handler = new CombatHandler(player, config, new MovementHandler(player, config));
+
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+        await Task.Delay(1000).ConfigureAwait(false);
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+
+        Assert.That(player.IsWalking, Is.False);
+        Assert.That(monster.Attributes[Stats.CurrentHealth], Is.EqualTo(100));
+
+        // Judged worth it again: the hunter goes for it.
+        HuntingTargets.SetUnworthy(player, null);
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+        await Task.Delay(1000).ConfigureAwait(false);
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+
+        Assert.That(player.IsWalking, Is.True);
+    }
+
+    /// <summary>
     /// Tests that <see cref="CombatHandler.PerformDrainLifeRecoveryAsync"/> uses Drain Life when HP is low.
     /// </summary>
     [Test]

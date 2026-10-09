@@ -356,7 +356,8 @@ internal static class MUIdleSessions
         // The class skills from the start (D22): a new character at its first entry, an older one now.
         await MUIdleClassSkills.GrantAsync(player, configuration).ConfigureAwait(false);
         MUIdleInventory.GrantFreePages(player, configuration);
-        var existing =await player.PersistenceContext.GetMUIdleCharacterStateAsync(character.Id).ConfigureAwait(false);
+        await MUIdleNotices.SendPendingAsync(player).ConfigureAwait(false);
+        var existing = await player.PersistenceContext.GetMUIdleCharacterStateAsync(character.Id).ConfigureAwait(false);
         var state = existing ?? await GetOrCreateStateAsync(player, character).ConfigureAwait(false);
         var summary = OfflineSessionStatistics.Parse(state.OfflineStatisticsJson);
 

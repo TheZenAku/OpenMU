@@ -36,6 +36,9 @@ internal static class MUIdlePackets
     /// <summary>Server to client: the junk of the inventory, slots and price (<see cref="MUIdleInventory"/>).</summary>
     public const byte JunkPreviewSubCode = 0x06;
 
+    /// <summary>Server to client: an update notice - a new client build, or a server restart in some seconds (<see cref="MUIdleNotices"/>).</summary>
+    public const byte NoticeSubCode = 0x07;
+
     /// <summary>Client to server: save the idle settings (JSON of <see cref="MUIdleSettings"/>).</summary>
     public const byte SaveSettingsSubCode = 0x10;
 

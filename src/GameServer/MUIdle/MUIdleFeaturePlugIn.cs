@@ -80,6 +80,9 @@ public class MUIdleFeaturePlugIn : IFeaturePlugIn, IPeriodicTaskPlugIn, ISupport
                 }
             }
 
+            // Every tick, not every 15 s: a restart notice counts its seconds down from here.
+            await MUIdleNotices.TickAsync(gameContext).ConfigureAwait(false);
+
             var now = DateTime.UtcNow;
             if (now < state.NextRunUtc)
             {

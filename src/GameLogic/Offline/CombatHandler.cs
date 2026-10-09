@@ -152,6 +152,9 @@ public sealed class CombatHandler
     private DateTime _unreachableTargetUntilUtc = DateTime.MinValue;
     private SkillEntry? _tickBestSkill;
     private bool _tickBestSkillComputed;
+    private List<int> _comboChain = [];
+    private bool _tickComboComputed;
+    private DateTime _comboStartedUtc = DateTime.MinValue;
 
     private DateTime _engageAtUtc = DateTime.MinValue;
 
@@ -369,7 +372,7 @@ public sealed class CombatHandler
 
         this._approachFailures = 0;
 
-        if (this._config?.UseCombo == true)
+        if (this.GetComboSkillIds().Count > 0)
         {
             await this.ExecuteComboAttackAsync().ConfigureAwait(false);
         }
@@ -620,6 +623,7 @@ public sealed class CombatHandler
         // check and the actual attack); a new tick starts with a fresh choice.
         this._tickBestSkill = null;
         this._tickBestSkillComputed = false;
+        this._tickComboComputed = false;
 
         // Self-defense has priority over farming: a player who recently attacked this bot becomes the
         // target, as long as they are still viable and anywhere near. Without this the bot placidly
@@ -934,32 +938,28 @@ public sealed class CombatHandler
 
         var ridesFenrir = this.RidesFenrir();
         var isBot = this.IsBot;
+
+        // MUIdle (HUNT v2): the order the player gave comes first - the first skill of it which the
+        // character can cast right now; the engine's own choice only when none of them can.
+        foreach (var preferredId in this._config?.SkillPriority ?? [])
+        {
+            if (preferredId > 0
+                && skillList.GetSkill((ushort)preferredId) is { } preferred
+                && this.IsUsableAttackSkill(preferred, ridesFenrir, isBot))
+            {
+                return this._tickBestSkill = preferred;
+            }
+        }
+
         var candidates = new List<(SkillEntry Entry, float Score)>();
         foreach (var entry in skillList.Skills)
         {
-            if (entry.Skill is not { } skill
-                || !BotProgression.IsAttackSkill(skill)
-                || BotProgression.IsCastleSiegeOnly(skill)
-                || (BotProgression.RequiresPet(skill) && !ridesFenrir)
-
-                // Mount-bound skills are never selectable for bots - no mount detection needed, even if
-                // a looted pet sits in the pet slot. This also covers bots which had already learned
-                // such a skill before the gate existed. Humans keep their mounted skills: their client
-                // only enables the cast while riding anyway.
-                || (isBot && BotProgression.RequiresMount(skill))
-                || skill.Range == 0
-
-                // Same trap as the buffs: a character keeps its skills across a reset but not the level
-                // which unlocked them, and the cast is refused deep inside, silently. A single-target
-                // skill picked here would simply not go off - the basic attack only steps in when NO
-                // skill was selected, not when the selected one fails.
-                || !BotProgression.MeetsRequirements(skill, attribute => this._player.Attributes?[attribute])
-                || !this.HasEnoughResources(entry))
+            if (!this.IsUsableAttackSkill(entry, ridesFenrir, isBot))
             {
                 continue;
             }
 
-            candidates.Add((entry, this.ScoreSkill(skill)));
+            candidates.Add((entry, this.ScoreSkill(entry.Skill!)));
         }
 
         if (candidates.Count == 0)
@@ -981,6 +981,152 @@ public sealed class CombatHandler
             .ThenByDescending(c => c.Score)
             .First()
             .Entry;
+    }
+
+    /// <summary>
+    /// Whether the engine may strike with the skill now: an attack skill the character can cast at all
+    /// (requirements, pet, mount) and afford (mana, ability).
+    /// </summary>
+    private bool IsUsableAttackSkill(SkillEntry entry, bool ridesFenrir, bool isBot)
+    {
+        return entry.Skill is { } skill
+            && BotProgression.IsAttackSkill(skill)
+            && !BotProgression.IsCastleSiegeOnly(skill)
+            && (!BotProgression.RequiresPet(skill) || ridesFenrir)
+
+            // Mount-bound skills are never selectable for bots - no mount detection needed, even if
+            // a looted pet sits in the pet slot. This also covers bots which had already learned
+            // such a skill before the gate existed. Humans keep their mounted skills: their client
+            // only enables the cast while riding anyway.
+            && !(isBot && BotProgression.RequiresMount(skill))
+            && skill.Range != 0
+
+            // Same trap as the buffs: a character keeps its skills across a reset but not the level
+            // which unlocked them, and the cast is refused deep inside, silently. A single-target
+            // skill picked here would simply not go off - the basic attack only steps in when NO
+            // skill was selected, not when the selected one fails.
+            && BotProgression.MeetsRequirements(skill, attribute => this._player.Attributes?[attribute])
+            && this.HasEnoughResources(entry);
+    }
+
+    /// <summary>
+    /// The skills of the combo the engine strikes: the configured ones (the MU Helper's "combo"), or with
+    /// <see cref="IMuHelperSettings.AutoCombo"/> a chain of the class's combo built from the skills the
+    /// character can cast now (<see cref="BuildAutomaticCombo"/>). Empty: no combo.
+    /// </summary>
+    private IReadOnlyList<int> GetComboSkillIds()
+    {
+        if (this._config?.AutoCombo == true)
+        {
+            // Built once per tick, and kept while a combo runs: a chain switching its skills halfway
+            // (another skill became the strongest) would break the combo it started.
+            if (!this._tickComboComputed && this._currentComboStep == 0)
+            {
+                this._comboChain = this.BuildAutomaticCombo();
+            }
+
+            this._tickComboComputed = true;
+            return this._comboChain;
+        }
+
+        return this._config?.UseCombo == true ? this.GetConfiguredComboSkillIds() : [];
+    }
+
+    /// <summary>
+    /// MUIdle (HUNT v2): the combo of the character's class, built from its learned skills - for each
+    /// step (a weapon skill, then two different finishers for the Blade Knight: SkillsInitializer
+    /// CreateSkillCombos) the skill of the player's order which comes first, else the strongest one now.
+    /// Empty when the character cannot combo (the quest reward <see cref="Stats.IsSkillComboAvailable"/>)
+    /// or lacks a skill of a step (the weapon skill comes with the weapon).
+    /// </summary>
+    private List<int> BuildAutomaticCombo()
+    {
+        if (this._player.ComboState is null
+            || this._player.SkillList is not { } skillList
+            || GetComboDefinition(this._player) is not { } definition)
+        {
+            return [];
+        }
+
+        var ridesFenrir = this.RidesFenrir();
+        var isBot = this.IsBot;
+        var priority = this._config?.SkillPriority ?? [];
+        var chain = new List<int>();
+        Skill? previous = null;
+        foreach (var order in definition.Steps.Select(s => s.Order).Distinct().Order())
+        {
+            SkillEntry? best = null;
+            var bestRank = float.MinValue;
+            foreach (var step in definition.Steps)
+            {
+                if (step.Order != order || step.Skill is not { } stepSkill || stepSkill == previous)
+                {
+                    continue;
+                }
+
+                // A master skill strengthening the step's skill counts as it (ComboStateMachine).
+                foreach (var entry in skillList.Skills)
+                {
+                    if (entry.Skill is not { } skill
+                        || skill.GetBaseSkill() != stepSkill
+                        || !this.IsUsableAttackSkill(entry, ridesFenrir, isBot))
+                    {
+                        continue;
+                    }
+
+                    var position = IndexOf(priority, skill.Number);
+                    var rank = position >= 0 ? float.MaxValue - position : this.ScoreSkill(skill);
+                    if (best is null || rank > bestRank)
+                    {
+                        best = entry;
+                        bestRank = rank;
+                    }
+                }
+            }
+
+            if (best?.Skill is not { } chosen)
+            {
+                return [];
+            }
+
+            chain.Add(chosen.Number);
+            previous = chosen.GetBaseSkill();
+        }
+
+        return chain.Count >= MinComboSkillCount ? chain : [];
+
+        static int IndexOf(IReadOnlyList<int> list, int value)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (list[i] == value)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// The combo definition of the player's class, or of the class it grew out of (Player.DetermineComboDefinition).
+    /// </summary>
+    private static SkillComboDefinition? GetComboDefinition(Player player)
+    {
+        var characterClass = player.SelectedCharacter?.CharacterClass;
+        while (characterClass is not null)
+        {
+            if (characterClass.ComboDefinition is { } definition)
+            {
+                return definition;
+            }
+
+            var current = characterClass;
+            characterClass = player.GameContext.Configuration.CharacterClasses.FirstOrDefault(c => c.NextGenerationClass == current);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -1113,11 +1259,37 @@ public sealed class CombatHandler
             return;
         }
 
-        var ids = this.GetConfiguredComboSkillIds();
+        var ids = this.GetComboSkillIds();
         if (ids.Count < MinComboSkillCount)
         {
             await this.ExecuteAttackAsync(this._currentTarget).ConfigureAwait(false);
             return;
+        }
+
+        // MUIdle (HUNT v2): a combo the state machine dropped (a strike which did not count, or more
+        // than its completion time since the first step) starts over, instead of striking its
+        // remaining steps for nothing.
+        if (this._currentComboStep % ids.Count != 0
+            && this._player.ComboState is { } machine
+            && (machine.CurrentState == machine.InitialState
+                || DateTime.UtcNow - this._comboStartedUtc > (GetComboDefinition(this._player)?.MaximumCompletionTime ?? TimeSpan.FromSeconds(3))))
+        {
+            this._currentComboStep = 0;
+            if (this._config?.AutoCombo == true)
+            {
+                this._comboChain = this.BuildAutomaticCombo();
+                ids = this._comboChain;
+                if (ids.Count < MinComboSkillCount)
+                {
+                    await this.ExecuteAttackAsync(this._currentTarget).ConfigureAwait(false);
+                    return;
+                }
+            }
+        }
+
+        if (this._currentComboStep % ids.Count == 0)
+        {
+            this._comboStartedUtc = DateTime.UtcNow;
         }
 
         var skillId = (ushort)ids[this._currentComboStep % ids.Count];
@@ -1203,8 +1375,9 @@ public sealed class CombatHandler
             return DefaultRange;
         }
 
-        var skillIds = this._config.UseCombo
-            ? this.GetConfiguredComboSkillIds()
+        var combo = this.GetComboSkillIds();
+        IReadOnlyList<int> skillIds = combo.Count > 0
+            ? combo
             : (this._config.BasicSkillId > 0 ? [this._config.BasicSkillId] : []);
 
         if (skillIds.Count > 0)

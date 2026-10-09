@@ -196,4 +196,18 @@ public interface IMuHelperSettings
     /// like a real player without hoarding junk.
     /// </summary>
     bool PickUpgradeItems { get; }
+
+    /// <summary>
+    /// Gets the attack skills in the order the player wants them cast: the engine strikes with the first
+    /// one the character can cast and afford, and picks on its own only when none of them can. Empty: the
+    /// engine decides. MUIdle (HUNT v2).
+    /// </summary>
+    IReadOnlyList<int> SkillPriority => [];
+
+    /// <summary>
+    /// Gets a value indicating whether the engine chains the combo of the character's class on its own,
+    /// out of the skills it learned, instead of the three configured skills of <see cref="UseCombo"/>.
+    /// MUIdle (HUNT v2).
+    /// </summary>
+    bool AutoCombo => false;
 }

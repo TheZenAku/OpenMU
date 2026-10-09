@@ -11,25 +11,37 @@ using MUnique.OpenMU.GameLogic.MuHelper;
 /// it saved one, with the guarantees HUNT mode needs on top (it always attacks something, falls back
 /// to the best learned skill, drinks mana potions as well). Without a saved configuration, sensible
 /// defaults apply: pick up zen, jewels, excellent and ancient items, drink potions at 50%.
+/// With the automatic skills of the idle settings (HUNT v2, the default) the engine picks the attack
+/// skills, the combo and the buffs on its own, and the skill and buff slots of the configuration rest.
 /// </summary>
 internal sealed class HuntMuHelperSettings : IMuHelperSettings
 {
     private readonly IMuHelperSettings? _inner;
+    private readonly bool _autoSkills;
+    private readonly bool _autoCombo;
+    private readonly IReadOnlyList<int> _skillOrder;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HuntMuHelperSettings"/> class.
     /// </summary>
     /// <param name="inner">The character's own settings, if any.</param>
-    public HuntMuHelperSettings(IMuHelperSettings? inner) => this._inner = inner;
+    /// <param name="settings">The idle settings of the character; <c>null</c>: the engine picks the skills.</param>
+    public HuntMuHelperSettings(IMuHelperSettings? inner, MUIdleSettings? settings = null)
+    {
+        this._inner = inner;
+        this._autoSkills = settings?.AutoSkills ?? true;
+        this._autoCombo = settings?.AutoCombo ?? true;
+        this._skillOrder = this._autoSkills ? [.. settings?.SkillOrder ?? []] : [];
+    }
 
     /// <inheritdoc />
-    public int BasicSkillId => this._inner?.BasicSkillId ?? 0;
+    public int BasicSkillId => this._autoSkills ? 0 : this._inner?.BasicSkillId ?? 0;
 
     /// <inheritdoc />
-    public int ActivationSkill1Id => this._inner?.ActivationSkill1Id ?? 0;
+    public int ActivationSkill1Id => this._autoSkills ? 0 : this._inner?.ActivationSkill1Id ?? 0;
 
     /// <inheritdoc />
-    public int ActivationSkill2Id => this._inner?.ActivationSkill2Id ?? 0;
+    public int ActivationSkill2Id => this._autoSkills ? 0 : this._inner?.ActivationSkill2Id ?? 0;
 
     /// <inheritdoc />
     public int DelayMinSkill1 => this._inner?.DelayMinSkill1 ?? 0;
@@ -62,7 +74,7 @@ internal sealed class HuntMuHelperSettings : IMuHelperSettings
     public int Skill2SubCondition => this._inner?.Skill2SubCondition ?? 0;
 
     /// <inheritdoc />
-    public bool UseCombo => this._inner?.UseCombo ?? false;
+    public bool UseCombo => !this._autoSkills && (this._inner?.UseCombo ?? false);
 
     /// <inheritdoc />
     public int HuntingRange => Math.Max(this._inner?.HuntingRange ?? 6, 4);
@@ -86,7 +98,7 @@ internal sealed class HuntMuHelperSettings : IMuHelperSettings
     public int BuffSkill2Id => this._inner?.BuffSkill2Id ?? 0;
 
     /// <inheritdoc />
-    public bool BuffOnDuration => this._inner?.BuffOnDuration ?? true;
+    public bool BuffOnDuration => this._autoSkills || (this._inner?.BuffOnDuration ?? true);
 
     /// <inheritdoc />
     public bool BuffDurationForParty => this._inner?.BuffDurationForParty ?? false;
@@ -167,10 +179,16 @@ internal sealed class HuntMuHelperSettings : IMuHelperSettings
     public bool FallbackBasicAttack => true;
 
     /// <inheritdoc />
-    public bool AutoSelectBestSkill => this.BasicSkillId == 0 || (this._inner?.AutoSelectBestSkill ?? true);
+    public bool AutoSelectBestSkill => this._autoSkills || this.BasicSkillId == 0 || (this._inner?.AutoSelectBestSkill ?? true);
 
     /// <inheritdoc />
-    public bool AutoSelectBuffs => this._inner?.AutoSelectBuffs ?? true;
+    public bool AutoSelectBuffs => this._autoSkills || (this._inner?.AutoSelectBuffs ?? true);
+
+    /// <inheritdoc />
+    public IReadOnlyList<int> SkillPriority => this._skillOrder;
+
+    /// <inheritdoc />
+    public bool AutoCombo => this._autoCombo && (this._autoSkills || !(this._inner?.UseCombo ?? false));
 
     /// <inheritdoc />
     public bool UseManaPotion => true;

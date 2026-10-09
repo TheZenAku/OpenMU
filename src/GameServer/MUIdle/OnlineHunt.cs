@@ -217,7 +217,7 @@ internal sealed class OnlineHunt : IHunter
         // The character's own MU Helper configuration drives the engine (skills, potions, pickup filters),
         // plus the guarantees HUNT needs - as for the offline hunt.
         var own = player.SelectedCharacter?.MuHelperConfiguration is { } blob ? MuHelperSettingsSerializer.TryDeserialize(blob) : null;
-        player.MuHelperSettings = new HuntMuHelperSettings(own);
+        player.MuHelperSettings = new HuntMuHelperSettings(own, this.Settings);
         this.HuntingOrigin = player.Position;
         this.TakeBaseline();
         player.Died += this._deathHandler;

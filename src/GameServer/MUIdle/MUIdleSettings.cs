@@ -109,6 +109,25 @@ public sealed class MUIdleSettings
     public string? BuildPreset { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether HUNT picks the skills on its own (HUNT v2): the strongest
+    /// attack skill the character can cast now (or the first of <see cref="SkillOrder"/>), and every buff
+    /// it learned - instead of the skill and buff slots of its MU Helper configuration.
+    /// </summary>
+    public bool AutoSkills { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether HUNT chains the combo of the character's class out of its
+    /// learned skills (Blade Knight, once its combo quest is done).
+    /// </summary>
+    public bool AutoCombo { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the attack skills in the order the player wants them cast (skill numbers); empty: HUNT
+    /// decides. Only with <see cref="AutoSkills"/>.
+    /// </summary>
+    public List<int> SkillOrder { get; set; } = [];
+
+    /// <summary>
     /// Parses the settings from JSON; returns the defaults for null or invalid JSON.
     /// </summary>
     /// <param name="json">The JSON.</param>

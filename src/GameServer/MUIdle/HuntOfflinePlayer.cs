@@ -149,7 +149,7 @@ public sealed class HuntOfflinePlayer : OfflinePlayer
         var own = this.SelectedCharacter?.MuHelperConfiguration is { } blob
             ? MuHelperSettingsSerializer.TryDeserialize(blob)
             : null;
-        this.MuHelperSettings = new HuntMuHelperSettings(own);
+        this.MuHelperSettings = new HuntMuHelperSettings(own, this.Settings);
         Interlocked.Exchange(ref this._lastMoney, this.Money);
 
         if (this.CurrentMap?.Definition.Name is { } mapName)

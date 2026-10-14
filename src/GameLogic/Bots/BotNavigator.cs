@@ -1014,12 +1014,19 @@ internal sealed class BotNavigator : AsyncDisposable
             if (await this.TravelTowardAsync(map, monsterGround, cancellationToken).ConfigureAwait(false))
             {
                 this._emptyGroundSince = null;
+                if (inSafezone)
+                {
+                    // MUIdle (HUNT v2): on its way out of town.
+                    this.Report(BotActivity.Travelling, map.Definition.Name.ValueInNeutralLanguage);
+                }
+
                 return;
             }
 
             // Unreachable monster (e.g. across a river): drop it and fall through to pick a spawn-area ground
             // or warp, instead of re-targeting the same unreachable monster every tick.
             this._hasDestination = false;
+            this._homingTarget = null;
         }
 
         // Nothing to fight here. If we still have a destination to reach, keep walking towards it. If the
@@ -2100,6 +2107,24 @@ internal sealed class BotNavigator : AsyncDisposable
     {
         ground = default;
         var position = this._player.Position;
+
+        // The monster it already walks after, while it is still a valid target: a new random pick among
+        // the nearest every second sent the bot a few steps towards one monster, then a few towards
+        // another on the other side - seen live as an elf zigzagging inside the Lorencia town (10-14).
+        if (this._homingTarget is { } kept
+            && kept.IsAlive
+            && !kept.IsAtSafezone()
+            && ReferenceEquals(kept.CurrentMap, map)
+            && kept.GetDistanceTo(position) <= MonsterSeekRadius
+            && DateTime.UtcNow - this._homingSinceUtc < HomingPatience
+            && CombatHandler.IsSafeTarget(this._player, kept.Definition)
+            && HuntingTargets.IsWorth(this._player, kept))
+        {
+            ground = kept.Position;
+            return true;
+        }
+
+        this._homingTarget = null;
         var candidates = new List<(Monster Monster, double Distance)>();
         foreach (var attackable in map.GetAttackablesInRange(position, MonsterSeekRadius))
         {
@@ -2146,6 +2171,8 @@ internal sealed class BotNavigator : AsyncDisposable
 
         // The monster stands on a walkable tile, so head straight for it; TravelTowardAsync walks a few steps
         // per tick and re-homes as the monster roams, closing the gap until combat range is reached.
+        this._homingTarget = chosen;
+        this._homingSinceUtc = DateTime.UtcNow;
         ground = chosen.Position;
         return true;
     }
@@ -2507,6 +2534,22 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <summary>MUIdle (HUNT v2): how much more experience per minute another map must promise before the hunt moves there.</summary>
     private const double RicherMapMargin = 1.25;
 
+    /// <summary>
+    /// MUIdle (HUNT v2): the same for a map not measured yet - only the estimate speaks for it, which has
+    /// been wrong by a factor of four, so a move must promise twice as much. A level 300 elf started in
+    /// Lorencia stayed there before: a map was not left at all before its measure was taken (10-14).
+    /// </summary>
+    private const double UnmeasuredMapMargin = 2.0;
+
+    /// <summary>
+    /// How long the bot walks after the same monster before it picks another one (it may be out of
+    /// reach behind a wall, or keep running away).
+    /// </summary>
+    private static readonly TimeSpan HomingPatience = TimeSpan.FromSeconds(20);
+
+    private Monster? _homingTarget;
+    private DateTime _homingSinceUtc = DateTime.MinValue;
+
     /// <summary>MUIdle (HUNT v2): the grounds within this share of the best are all good choices (some spread over a map).</summary>
     private const double RichGroundShare = 0.85;
 
@@ -2753,12 +2796,10 @@ internal sealed class BotNavigator : AsyncDisposable
         var hereEstimate = current is null ? 0 : HuntingSpotRating.BestSpot(this._player, current).ExperiencePerMinute;
         var hereMeasured = current is null ? null : Measured(current);
 
-        // Not off a map before its measure is taken (unless it pays nothing): a move must be weighed
-        // against what it leaves, and the estimate alone has been wrong by a factor of four.
-        if (!escape && measuredOf is not null && hereMeasured is null && hereEstimate > 0)
-        {
-            return false;
-        }
+        // A map not measured yet is left only for one promising twice as much (UnmeasuredMapMargin): a
+        // move must be weighed against what it leaves, and the estimate alone has been wrong by a factor
+        // of four - but a strong character dropped in a starter town must not wait there for a measure.
+        var unmeasuredHere = measuredOf is not null && hereMeasured is null;
 
         // The estimate, scaled by what the character really earned where both are known.
         var ratios = new List<double>();
@@ -2776,7 +2817,7 @@ internal sealed class BotNavigator : AsyncDisposable
         ratios.Sort();
         var calibration = ratios.Count > 0 ? ratios[ratios.Count / 2] : 1.0;
         var here = hereMeasured ?? (hereEstimate * calibration);
-        var threshold = escape || here <= 0 ? 0 : here * RicherMapMargin;
+        var threshold = escape || here <= 0 ? 0 : here * (unmeasuredHere ? UnmeasuredMapMargin : RicherMapMargin);
         var bestRate = 0.0;
         foreach (var candidate in this._player.GameContext.Configuration.Maps)
         {

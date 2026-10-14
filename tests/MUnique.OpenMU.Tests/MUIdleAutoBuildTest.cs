@@ -13,6 +13,31 @@ using MUnique.OpenMU.GameServer.MUIdle;
 [TestFixture]
 public class MUIdleAutoBuildTest
 {
+    /// <summary>
+    /// All free points go out at once, by the class weights (Dark Wizard 5:2:2, the remainder to the
+    /// main stat): each stat in one step, not one point at a time (10-14: 875 points stalled the browser).
+    /// </summary>
+    [Test]
+    public async ValueTask SpendsAllPointsByTheWeightsAsync()
+    {
+        var player = await PlayerTestHelper.CreatePlayerAsync().ConfigureAwait(false);
+        var character = player.SelectedCharacter!;
+        character.LevelUpPoints = 100;
+        var energy = player.Attributes![Stats.BaseEnergy];
+        var agility = player.Attributes[Stats.BaseAgility];
+        var vitality = player.Attributes[Stats.BaseVitality];
+
+        await MUIdleAutoBuild.DistributeAsync(player, string.Empty).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(character.LevelUpPoints, Is.Zero);
+            Assert.That(player.Attributes[Stats.BaseEnergy], Is.EqualTo(energy + 56));
+            Assert.That(player.Attributes[Stats.BaseAgility], Is.EqualTo(agility + 22));
+            Assert.That(player.Attributes[Stats.BaseVitality], Is.EqualTo(vitality + 22));
+        });
+    }
+
     /// <summary>Each preset changes the main stat of its class only.</summary>
     [Test]
     public void PresetsChangeTheMainStat()

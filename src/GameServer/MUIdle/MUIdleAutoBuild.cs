@@ -8,22 +8,21 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.AttributeSystem;
+using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
-using MUnique.OpenMU.GameLogic.Offline;
-using MUnique.OpenMU.GameLogic.PlayerActions.Character;
 using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameServer.RemoteView;
+using MUnique.OpenMU.Network.Packets.ServerToClient;
 using MUnique.OpenMU.PlugIns;
 
 /// <summary>
-/// Auto build: spends the free level up points of a character by its class's stat weights, through
-/// the upstream <see cref="IncreaseStatsAction"/> (which validates points, class and maximum values).
+/// Auto build: spends the free level up points of a character by its class's stat weights, with the
+/// checks of the upstream IncreaseStatsAction (a stat the class may raise, its maximum value, the points
+/// there are) - each stat in one step, told to the client in one packet.
 /// </summary>
 internal static class MUIdleAutoBuild
 {
-    private static readonly IncreaseStatsAction IncreaseAction = new();
-
     /// <summary>
     /// The build presets a class can choose instead of its default (see <see cref="MUIdleSettings.BuildPreset"/>).
     /// </summary>
@@ -80,28 +79,58 @@ internal static class MUIdleAutoBuild
         var shares = weights.Select(w => (w.Stat, Amount: points * w.Weight / totalWeight)).ToArray();
         shares[0].Amount += points - shares.Sum(s => s.Amount);
 
-        // A client hears of an increase by the stat-increase response, which says "one more point".
-        // For several points at once upstream re-sends the whole character and warps the player onto
-        // its own position (a workaround for old clients): on every level up of a hunting character
-        // that was 3-4 warps, walk resyncs, and a crash when the next share hit a player mid-warp.
-        // Offline hunters have no client to tell, so they keep the bulk step.
-        var bulk = player is OfflinePlayer;
+        // Upstream tells a client of an increase by the short stat-increase response, which says "one
+        // more point" - several points at once it answers by re-sending the whole character and warping
+        // the player onto its own position (a workaround for old clients). So the auto build used to
+        // spend an online character's points one by one: 875 points were 875 attribute recalculations
+        // and 875 responses in one burst, and the browser stuttered for seconds (10-14). The extended
+        // response carries the amount and the new maximums, and the client applies it as such.
         foreach (var (stat, amount) in shares)
         {
-            var left = amount;
-            while (left > 0 && character.LevelUpPoints > 0)
+            var added = Increase(player, character, stat, amount);
+            if (added > 0 && player is RemotePlayer { Connection: { } connection } && player.Attributes is { } attributes)
             {
-                var step = bulk ? (ushort)Math.Min(left, Math.Min(character.LevelUpPoints, ushort.MaxValue)) : (ushort)1;
-                var before = character.LevelUpPoints;
-                await IncreaseAction.IncreaseStatsAsync(player, stat, step).ConfigureAwait(false);
-                if (character.LevelUpPoints >= before)
+                for (var told = 0; told < added; told += ushort.MaxValue)
                 {
-                    break; // maximum reached or not increasable for this class
+                    await connection.SendCharacterStatIncreaseResponseExtendedAsync(
+                        stat.GetStatType(),
+                        (ushort)Math.Min(added - told, ushort.MaxValue),
+                        (uint)attributes[Stats.MaximumHealth],
+                        (uint)attributes[Stats.MaximumMana],
+                        (uint)attributes[Stats.MaximumShield],
+                        (uint)attributes[Stats.MaximumAbility]).ConfigureAwait(false);
                 }
-
-                left -= before - character.LevelUpPoints;
             }
         }
+    }
+
+    /// <summary>
+    /// Raises a stat by up to the amount, as far as the class may raise it, its maximum allows and the
+    /// free points reach.
+    /// </summary>
+    /// <returns>The points spent.</returns>
+    private static int Increase(Player player, Character character, AttributeDefinition stat, int amount)
+    {
+        if (character.CharacterClass?.GetStatAttribute(stat) is not { IncreasableByPlayer: true, Attribute: { } attribute }
+            || player.Attributes is not { } attributes)
+        {
+            return 0;
+        }
+
+        amount = Math.Min(amount, character.LevelUpPoints);
+        if (attribute.MaximumValue is { } maximum)
+        {
+            amount = (int)Math.Min(amount, Math.Max(0, maximum - attributes[attribute]));
+        }
+
+        if (amount <= 0)
+        {
+            return 0;
+        }
+
+        attributes[attribute] += amount;
+        character.LevelUpPoints -= amount;
+        return amount;
     }
 }
 

@@ -39,6 +39,9 @@ internal static class MUIdlePackets
     /// <summary>Server to client: an update notice - a new client build, or a server restart in some seconds (<see cref="MUIdleNotices"/>).</summary>
     public const byte NoticeSubCode = 0x07;
 
+    /// <summary>Server to client: the hunting spots of the current map for the map window (HUNT v2, <see cref="MUIdleMapSpots"/>).</summary>
+    public const byte MapSpotsSubCode = 0x08;
+
     /// <summary>Client to server: save the idle settings (JSON of <see cref="MUIdleSettings"/>).</summary>
     public const byte SaveSettingsSubCode = 0x10;
 
@@ -80,6 +83,12 @@ internal static class MUIdlePackets
 
     /// <summary>Client to server: the player walked, attacked or cast on its own; the online hunt holds still a moment.</summary>
     public const byte ManualControlSubCode = 0x1D;
+
+    /// <summary>Client to server: send the hunting spots of the current map (<c>{}</c>).</summary>
+    public const byte RequestMapSpotsSubCode = 0x1E;
+
+    /// <summary>Client to server: hunt at this spot of the current map (<c>{"x":120,"y":80}</c>), or choose again (<c>{"clear":true}</c>).</summary>
+    public const byte PinSpotSubCode = 0x1F;
 
     /// <summary>The maximum payload size which is accepted from a client.</summary>
     public const int MaximumClientPayload = 4096;

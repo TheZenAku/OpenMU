@@ -141,6 +141,28 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                 case MUIdlePackets.ManualControlSubCode:
                     OnlineHunt.Pause(remotePlayer);
                     break;
+                case MUIdlePackets.RequestMapSpotsSubCode:
+                    await MUIdlePackets.SendJsonAsync(remotePlayer, MUIdlePackets.MapSpotsSubCode, MUIdleMapSpots.Build(remotePlayer)).ConfigureAwait(false);
+                    break;
+                case MUIdlePackets.PinSpotSubCode:
+                    using (var request = JsonDocument.Parse(payload))
+                    {
+                        var root = request.RootElement;
+                        if (root.TryGetProperty("clear", out var clear) && clear.ValueKind == JsonValueKind.True)
+                        {
+                            OnlineHunt.PinSpot(remotePlayer, null);
+                        }
+                        else if (root.TryGetProperty("x", out var xElement) && xElement.TryGetInt32(out var x)
+                                 && root.TryGetProperty("y", out var yElement) && yElement.TryGetInt32(out var y)
+                                 && remotePlayer.CurrentMap is { } map
+                                 && MUIdleMapSpots.WalkableNear(map, x, y) is { } spot)
+                        {
+                            OnlineHunt.PinSpot(remotePlayer, spot);
+                        }
+                    }
+
+                    await MUIdlePackets.SendJsonAsync(remotePlayer, MUIdlePackets.MapSpotsSubCode, MUIdleMapSpots.Build(remotePlayer)).ConfigureAwait(false);
+                    break;
                 case MUIdlePackets.BuyInventoryPageSubCode:
                     using (var request = JsonDocument.Parse(payload))
                     {

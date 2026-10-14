@@ -38,6 +38,7 @@ internal sealed class OnlineHunt : IHunter
     private OfflinePlayerMuHelper? _engine;
     private BotNavigator? _navigator;
     private DateTime _pausedUntilUtc;
+    private (short Map, Point Spot)? _pinnedSpot;
     private DateTime _nextSampleUtc;
     private long _lastExperience;
     private long _lastMasterExperience;
@@ -103,6 +104,28 @@ internal sealed class OnlineHunt : IHunter
     /// <inheritdoc />
     public bool IsPaused => DateTime.UtcNow < this._pausedUntilUtc;
 
+    /// <inheritdoc />
+    public Point? PinnedSpot
+    {
+        get
+        {
+            var pinned = this._pinnedSpot;
+            if (pinned is null)
+            {
+                return null;
+            }
+
+            // A spot belongs to its map: another map (a warp, a death elsewhere) lets it go.
+            if (this._player.CurrentMap?.Definition.Number != pinned.Value.Map)
+            {
+                this._pinnedSpot = null;
+                return null;
+            }
+
+            return pinned.Value.Spot;
+        }
+    }
+
     /// <summary>
     /// Gets the online hunt of a player, if it runs.
     /// </summary>
@@ -160,6 +183,29 @@ internal sealed class OnlineHunt : IHunter
             hunt.HuntingOrigin = player.Position;
         }
     }
+
+    /// <summary>
+    /// The player chose a spot of its map on the map window (or none): the hunt walks there and hunts
+    /// there, and stays - no other ground, no other map - until another spot, another map or MANUAL.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="spot">The spot, a walkable tile; <c>null</c>: the hunt chooses again.</param>
+    /// <returns><c>true</c>, if an online hunt runs and took it.</returns>
+    public static bool PinSpot(Player player, Point? spot)
+    {
+        if (Of(player) is not { } hunt)
+        {
+            return false;
+        }
+
+        hunt._pinnedSpot = spot is { } chosen && player.CurrentMap is { } map ? (map.Definition.Number, chosen) : null;
+        hunt._pausedUntilUtc = DateTime.MinValue;
+        player.Logger.LogInformation("MUIdle: {Character} chose the hunting spot {Spot} on {Map}.", player.Name, spot?.ToString() ?? "-", player.CurrentMap?.Definition.Name.ValueInNeutralLanguage);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public void ForgetPinnedSpot() => this._pinnedSpot = null;
 
     /// <inheritdoc />
     public bool TryGetRevengeDestination(GameMapDefinition currentMap, out Point deathSite)

@@ -99,6 +99,19 @@ public interface IHunter
     bool IsPaused => false;
 
     /// <summary>
+    /// Gets the spot of the current map the player chose for the hunt (the map window, HUNT v2): the hunt
+    /// walks there and hunts there, and neither picks other grounds nor other maps meanwhile.
+    /// </summary>
+    Point? PinnedSpot => null;
+
+    /// <summary>
+    /// Lets the chosen spot go (no way leads there).
+    /// </summary>
+    void ForgetPinnedSpot()
+    {
+    }
+
+    /// <summary>
     /// Ends the hunting session itself (it could not pay its fee, or it died and does not go on).
     /// </summary>
     /// <returns>The task.</returns>

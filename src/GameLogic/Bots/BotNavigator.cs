@@ -106,6 +106,18 @@ internal sealed class BotNavigator : AsyncDisposable
     private const int StepsPerHop = 3;
 
     /// <summary>
+    /// MUIdle (HUNT v2): the hop of a hunting character - the walker takes 16 steps at most. Three steps a
+    /// second walked the hero a little and stopped it until the next evaluation.
+    /// </summary>
+    private const int HuntHopSteps = 15;
+
+    /// <summary>MUIdle (HUNT v2): the next hop is sent when this few steps of the running one are left.</summary>
+    private const int HopLookAheadSteps = 2;
+
+    /// <summary>MUIdle (HUNT v2): the radius of a spot the player chose on the map.</summary>
+    private const byte PinnedSpotRadius = 15;
+
+    /// <summary>
     /// How far the travel destination may drift (e.g. a roaming monster the bot homes in on) before the
     /// cached route is re-planned. Re-planning a whole-map A* every tick just to consume three steps
     /// starved the pathfinder pool once dozens of bots traveled at the same time.
@@ -179,6 +191,9 @@ internal sealed class BotNavigator : AsyncDisposable
     private static readonly ConcurrentDictionary<Guid, bool> WalkableSpawnGateCache = new();
 
     private static readonly TimeSpan EvaluationInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>MUIdle (HUNT v2): how often a hunting character's travel walk is kept going.</summary>
+    private static readonly TimeSpan TravelCheckInterval = TimeSpan.FromMilliseconds(250);
 
     private static readonly TimeSpan EmptyGroundGrace = TimeSpan.FromSeconds(8);
 
@@ -286,6 +301,9 @@ internal sealed class BotNavigator : AsyncDisposable
     private Timer? _timer;
     private DateTime? _emptyGroundSince;
     private int _isEvaluating;
+
+    /// <summary>MUIdle (HUNT v2): the next full evaluation; the ticks between only keep a travel walk going.</summary>
+    private DateTime _nextFullEvaluationUtc = DateTime.MinValue;
     private Point _destination;
     private bool _hasDestination;
     private DateTimeOffset _lastWarpUtc = DateTimeOffset.MinValue;
@@ -380,7 +398,7 @@ internal sealed class BotNavigator : AsyncDisposable
             state => _ = this.SafeEvaluateAsync(cancellationToken),
             null,
             TimeSpan.FromMilliseconds(2000 + Rand.NextInt(0, 1500)),
-            EvaluationInterval);
+            this._policy.RateByExperience ? TravelCheckInterval : EvaluationInterval);
     }
 
     /// <summary>
@@ -620,6 +638,7 @@ internal sealed class BotNavigator : AsyncDisposable
             this._timer = null;
             this._cts.Dispose();
             HuntingTargets.SetUnworthy(this._player, null);
+            HuntingTargets.SetZone(this._player, null, 0);
         }
 
         base.Dispose(disposing);
@@ -723,6 +742,19 @@ internal sealed class BotNavigator : AsyncDisposable
 
         try
         {
+            // MUIdle (HUNT v2): between the full evaluations (once a second) only the travel goes on.
+            if (this._policy.RateByExperience)
+            {
+                var now = DateTime.UtcNow;
+                if (now < this._nextFullEvaluationUtc)
+                {
+                    await this.ContinueTravelAsync().ConfigureAwait(false);
+                    return;
+                }
+
+                this._nextFullEvaluationUtc = now + EvaluationInterval;
+            }
+
             await this.EvaluateAsync(cancellationToken).ConfigureAwait(false);
             this._hunter.OnAiTickSucceeded();
         }
@@ -822,6 +854,17 @@ internal sealed class BotNavigator : AsyncDisposable
         // While inside the safezone we aim it at the destination, so the combat handler does NOT
         // make the bot stand in town swinging at monsters just outside (which it can't damage from a safezone) -
         // it should simply walk out of town instead.
+        // MUIdle (HUNT v2): the spot the player chose on the map is where the hunt goes.
+        if (this._hunter.PinnedSpot is { } pinned
+            && (!this._hasDestination || this._destination.EuclideanDistanceTo(pinned) > PinnedSpotRadius))
+        {
+            this._destination = pinned;
+            this._hasDestination = true;
+            this._homingTarget = null;
+            this._player.Logger.LogInformation("Hunt {Character}: heading to the spot chosen on the map, {Spot} on {Map}.", this._player.Name, pinned, map.Definition.Name.ValueInNeutralLanguage);
+            this.Report(BotActivity.Travelling, map.Definition.Name.ValueInNeutralLanguage);
+        }
+
         this._hunter.HuntingOrigin = isTetheredToLeader
             ? leaderToFollow!.Position
             : inSafezone && this._hasDestination ? this._destination : this._player.Position;
@@ -837,10 +880,7 @@ internal sealed class BotNavigator : AsyncDisposable
         // damage-based safety check), so a too-strong monster next to the bot neither stops its travel
         // nor suppresses the stuck watchdog.
         this.UpdateWorthyTargets(map);
-        var monstersNearby = map.GetAttackablesInRange(this._player.Position, TravelStopRange)
-            .OfType<Monster>()
-            .Count(m => m.IsAlive && !m.IsAtSafezone() && m.SummonedBy is null && CombatHandler.IsSafeTarget(this._player, m.Definition)
-                        && HuntingTargets.IsWorth(this._player, m));
+        var monstersNearby = this.CountMonstersToStopFor(map);
 
         // A rally point (a live world boss) on this map: the monsters on the way do not hold the bot
         // back - it fought the entrance's trash for a quarter of an hour before. It walks to the spot,
@@ -1040,6 +1080,12 @@ internal sealed class BotNavigator : AsyncDisposable
                 // picking another one. Re-picking immediately turned a pocket of unreachable picks
                 // into a full-tick churn - a new far-away ground every second, hammering the path
                 // finder without the bot ever moving.
+                if (this._hunter.PinnedSpot is { } unreachable && this._destination.EuclideanDistanceTo(unreachable) <= PinnedSpotRadius)
+                {
+                    this._player.Logger.LogInformation("Hunt {Character}: no way to the spot chosen on the map, {Spot}; the hunt chooses again.", this._player.Name, unreachable);
+                    this._hunter.ForgetPinnedSpot();
+                }
+
                 this._hasDestination = false;
                 this._emptyGroundSince ??= DateTime.UtcNow;
             }
@@ -1656,7 +1702,7 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <returns>True, if a warp was performed.</returns>
     private async ValueTask<bool> TryWarpToBetterMapAsync()
     {
-        if (!this._policy.WarpBetweenMaps)
+        if (!this._policy.WarpBetweenMaps || this._hunter.PinnedSpot is not null)
         {
             return false;
         }
@@ -1927,13 +1973,67 @@ internal sealed class BotNavigator : AsyncDisposable
     }
 
     /// <summary>
+    /// MUIdle (HUNT v2): the monsters which stop a travel walk - safe ones the hunt would fight, within reach.
+    /// </summary>
+    private int CountMonstersToStopFor(GameMap map)
+    {
+        return map.GetAttackablesInRange(this._player.Position, TravelStopRange)
+            .OfType<Monster>()
+            .Count(m => m.IsAlive && !m.IsAtSafezone() && m.SummonedBy is null && CombatHandler.IsSafeTarget(this._player, m.Definition)
+                        && HuntingTargets.IsWorth(this._player, m));
+    }
+
+    /// <summary>
+    /// MUIdle (HUNT v2): keeps a travel walk going between the full evaluations - the next hop of the
+    /// cached route goes out when the running one is about to end (or just ended), so the hero walks on
+    /// without the stop of up to a second the evaluation interval made after every hop. Nothing else is
+    /// decided here: a monster to fight in reach ends it, and the next full evaluation decides on.
+    /// </summary>
+    private async ValueTask ContinueTravelAsync()
+    {
+        if (this._travelPath is not { } path
+            || this._travelPathIndex >= path.Count
+            || this._hunter.IsPaused
+            || !this._player.IsAlive
+            || this._player.PlayerState.CurrentState != PlayerState.EnteredWorld
+            || this._player.CurrentMiniGame is not null
+            || this._player.CurrentMap is not { } map
+            || this.CountMonstersToStopFor(map) > 0)
+        {
+            return;
+        }
+
+        // Where on the running hop the hero stands: near its end, the next hop takes over from there.
+        var position = this._player.Position;
+        var first = Math.Max(0, this._travelPathIndex - HuntHopSteps - 1);
+        for (var i = this._travelPathIndex - 1; i >= first; i--)
+        {
+            if (path[i].Point != position)
+            {
+                continue;
+            }
+
+            if (this._travelPathIndex - 1 - i > HopLookAheadSteps)
+            {
+                return;
+            }
+
+            this._travelPathIndex = i + 1;
+            this._hunter.HuntingOrigin = map.Terrain.SafezoneMap[position.X, position.Y] && this._hasDestination ? this._destination : position;
+            this._lastMoveUtc = DateTime.UtcNow;
+            await this.WalkCachedStepsAsync(position).ConfigureAwait(false);
+            return;
+        }
+    }
+
+    /// <summary>
     /// Issues the next few steps of the cached route (short hops, so the bot can stop and fight between
     /// them) and advances the route cursor.
     /// </summary>
     private async ValueTask WalkCachedStepsAsync(Point position)
     {
         var path = this._travelPath!;
-        var stepsCount = Math.Min(path.Count - this._travelPathIndex, StepsPerHop);
+        var stepsCount = Math.Min(path.Count - this._travelPathIndex, this._policy.RateByExperience ? HuntHopSteps : StepsPerHop);
         var steps = new WalkingStep[stepsCount];
         for (var i = 0; i < stepsCount; i++)
         {
@@ -2107,6 +2207,12 @@ internal sealed class BotNavigator : AsyncDisposable
     {
         ground = default;
         var position = this._player.Position;
+
+        // MUIdle (HUNT v2): far from the spot the player chose, no monster on the way draws the hunt off.
+        if (this._hunter.PinnedSpot is { } spot && position.EuclideanDistanceTo(spot) > PinnedSpotRadius)
+        {
+            return false;
+        }
 
         // The monster it already walks after, while it is still a valid target: a new random pick among
         // the nearest every second sent the bot a few steps towards one monster, then a few towards
@@ -2886,6 +2992,16 @@ internal sealed class BotNavigator : AsyncDisposable
             return;
         }
 
+        // The spot the player chose: what lives there is hunted, the rest on the way only when it attacks.
+        if (this._hunter.PinnedSpot is { } spot)
+        {
+            HuntingTargets.SetUnworthy(this._player, null);
+            HuntingTargets.SetZone(this._player, spot, PinnedSpotRadius);
+            this._worthyMap = null;
+            return;
+        }
+
+        HuntingTargets.SetZone(this._player, null, 0);
         var now = DateTime.UtcNow;
         if (ReferenceEquals(map, this._worthyMap) && now < this._nextWorthyUtc)
         {
@@ -2934,6 +3050,13 @@ internal sealed class BotNavigator : AsyncDisposable
     {
         ground = default;
         groundLevel = 0;
+
+        // MUIdle (HUNT v2): the spot the player chose on the map.
+        if (this._hunter.PinnedSpot is { } chosenSpot)
+        {
+            ground = chosenSpot;
+            return true;
+        }
 
         // On the rally map the ground is the rally spot, wherever it moved to.
         if (this._policy.Rally?.Invoke() is { } rally && rally.Map == map.Definition.Number)

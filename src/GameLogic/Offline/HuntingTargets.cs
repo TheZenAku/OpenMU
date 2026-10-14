@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.GameLogic.Offline;
 
 using System.Runtime.CompilerServices;
 using MUnique.OpenMU.GameLogic.NPC;
+using MUnique.OpenMU.Pathfinding;
 
 /// <summary>
 /// MUIdle (HUNT v2): the monsters of its map which are not worth a hunter's time - the permanent spawns
@@ -18,6 +19,27 @@ using MUnique.OpenMU.GameLogic.NPC;
 internal static class HuntingTargets
 {
     private static readonly ConditionalWeakTable<Player, HashSet<short>> Unworthy = new();
+
+    private static readonly ConditionalWeakTable<Player, StrongBox<(Point Center, byte Radius)>> Zones = new();
+
+    /// <summary>
+    /// Sets the zone of a spot the player chose, or none: the monsters in it are all worth the time, the
+    /// ones outside of it only when they attack (the hunt walks there without stopping for them).
+    /// </summary>
+    /// <param name="player">The hunting player.</param>
+    /// <param name="center">The spot; <c>null</c>: no zone.</param>
+    /// <param name="radius">The radius of the zone.</param>
+    public static void SetZone(Player player, Point? center, byte radius)
+    {
+        if (center is { } spot)
+        {
+            Zones.AddOrUpdate(player, new StrongBox<(Point, byte)>((spot, radius)));
+        }
+        else
+        {
+            Zones.Remove(player);
+        }
+    }
 
     /// <summary>
     /// Sets the monsters (numbers) which are not worth the player's time, or none.
@@ -43,6 +65,11 @@ internal static class HuntingTargets
     /// <returns><c>true</c>, if the hunter may go for it.</returns>
     public static bool IsWorth(Player player, Monster monster)
     {
+        if (Zones.TryGetValue(player, out var zone))
+        {
+            return monster.IsInRange(zone.Value.Center, zone.Value.Radius) || monster.IsTargetingPlayer(player);
+        }
+
         return !Unworthy.TryGetValue(player, out var unworthy)
                || !unworthy.Contains(monster.Definition.Number)
                || monster.IsTargetingPlayer(player);

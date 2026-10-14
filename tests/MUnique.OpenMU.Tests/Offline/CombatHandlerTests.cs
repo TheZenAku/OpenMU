@@ -138,6 +138,36 @@ public class CombatHandlerTests
     }
 
     /// <summary>
+    /// MUIdle (HUNT v2): with a spot chosen on the map, only the monsters around it are hunted (the ones
+    /// on the way only when they attack).
+    /// </summary>
+    [Test]
+    public async ValueTask PerformAttackAsync_HuntsOnlyAroundTheChosenSpotAsync()
+    {
+        var player = await this.CreateOfflinePlayerAsync().ConfigureAwait(false);
+        player.Position = this._origin;
+
+        var monster = await this.CreateMonsterAsync(new Point(105, 105)).ConfigureAwait(false);
+        await player.CurrentMap!.AddAsync(monster).ConfigureAwait(false);
+        HuntingTargets.SetZone(player, new Point(150, 150), 15);
+
+        var config = new MuHelperSettings { HuntingRange = 10 };
+        player.HuntingOrigin = this._origin;
+        var handler = new CombatHandler(player, config, new MovementHandler(player, config));
+
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+        await Task.Delay(1000).ConfigureAwait(false);
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+        Assert.That(player.IsWalking, Is.False, "outside the zone of the spot");
+
+        HuntingTargets.SetZone(player, new Point(104, 104), 15);
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+        await Task.Delay(1000).ConfigureAwait(false);
+        await handler.PerformAttackAsync().ConfigureAwait(false);
+        Assert.That(player.IsWalking, Is.True, "inside the zone of the spot");
+    }
+
+    /// <summary>
     /// Tests that <see cref="CombatHandler.PerformDrainLifeRecoveryAsync"/> uses Drain Life when HP is low.
     /// </summary>
     [Test]

@@ -11,6 +11,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.MuHelper;
 using MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameServer.RemoteView.MuHelper;
+using MUnique.OpenMU.Pathfinding;
 
 /// <summary>
 /// Tests for <see cref="ItemPickupHandler"/>.
@@ -91,6 +92,31 @@ public class ItemPickupHandlerTests
     /// <summary>
     /// Tests that a jewel pickup option only picks up actual jewels.
     /// </summary>
+    /// <summary>
+    /// MUIdle (HUNT v2): a wanted drop beyond the pickup action's reach (3 tiles) is walked to, not
+    /// asked for from afar - the action refuses it, and online the player reads "can't pick that up".
+    /// </summary>
+    [Test]
+    public async ValueTask WalksToADropOutOfReachAsync()
+    {
+        var player = await this.CreateOfflinePlayerAsync().ConfigureAwait(false);
+        player.Position = new Point(100, 100);
+        player.HuntingOrigin = player.Position;
+        var config = new MuHelperSettings { PickSelectItems = true, PickJewel = true, ObtainRange = 8 };
+        var handler = new ItemPickupHandler(player, config, new MovementHandler(player, config));
+
+        var drop = new DroppedItem(this.CreateItem(14, 13), new Point(106, 100), player.CurrentMap!, player);
+        await player.CurrentMap!.AddAsync(drop).ConfigureAwait(false);
+
+        await handler.PickupItemsAsync().ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(player.CurrentMap.GetObject(drop.Id), Is.Not.Null, "not taken from six tiles away");
+            Assert.That(player.IsWalking, Is.True, "walks to it");
+        });
+    }
+
     [Test]
     public async ValueTask PickJewel_PicksUpJewelsOnlyAsync()
     {

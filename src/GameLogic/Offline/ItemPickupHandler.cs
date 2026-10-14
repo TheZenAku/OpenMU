@@ -17,6 +17,12 @@ public sealed class ItemPickupHandler
     private const byte MinPickupRange = 1;
 
     /// <summary>
+    /// MUIdle (HUNT v2): the farthest a drop may lie for the pickup action (PickupItemAction refuses
+    /// anything farther, and online the player reads "can't pick that up" for each such try).
+    /// </summary>
+    private const int PickupReach = 3;
+
+    /// <summary>
     /// MUIdle (HUNT v2): how long a drop which the pickup refused is left alone. Online, every refusal
     /// reaches the player's screen as a message, and the handler tries every two ticks a second.
     /// </summary>
@@ -40,6 +46,7 @@ public sealed class ItemPickupHandler
 
     private readonly Player _player;
     private readonly IMuHelperSettings? _config;
+    private readonly MovementHandler? _movement;
     private readonly Dictionary<ushort, DateTime> _refusedUntil = new();
 
     /// <summary>
@@ -47,10 +54,12 @@ public sealed class ItemPickupHandler
     /// </summary>
     /// <param name="player">The offline player.</param>
     /// <param name="config">The MU Helper configuration.</param>
-    public ItemPickupHandler(Player player, IMuHelperSettings? config)
+    /// <param name="movement">Walks the player to a drop out of reach (the MU Helper's "obtain"); without it, only drops in reach are taken.</param>
+    public ItemPickupHandler(Player player, IMuHelperSettings? config, MovementHandler? movement = null)
     {
         this._player = player;
         this._config = config;
+        this._movement = movement;
     }
 
     /// <summary>
@@ -80,6 +89,8 @@ public sealed class ItemPickupHandler
             }
         }
 
+        ILocateable? walkTo = null;
+        var walkDistance = double.MaxValue;
         foreach (var drop in drops)
         {
             if (!this.ShouldPickUpDrop(drop)
@@ -96,11 +107,34 @@ public sealed class ItemPickupHandler
                 continue;
             }
 
+            // Out of reach: walked to (the nearest first), then taken.
+            var distance = this._player.GetDistanceTo(drop);
+            if ((int)distance > PickupReach)
+            {
+                if (drop is ILocateable located && distance < walkDistance)
+                {
+                    walkTo = located;
+                    walkDistance = distance;
+                }
+
+                continue;
+            }
+
             await PickupAction.PickupItemAsync(this._player, drop.Id).ConfigureAwait(false);
             if (map.GetDrop(drop.Id) is not null)
             {
                 // Still lying there: refused for a reason of its own (a quest item of another quest...).
                 this._refusedUntil[drop.Id] = now + RefusedDropPause;
+            }
+        }
+
+        if (walkTo is not null && this._movement is not null && !this._player.IsWalking
+            && !await this._movement.WalkNearAsync(walkTo.Position).ConfigureAwait(false))
+        {
+            // No way there (behind a wall): not tried again for a while.
+            if (walkTo is IIdentifiable unreachable)
+            {
+                this._refusedUntil[unreachable.Id] = now + RefusedDropPause;
             }
         }
     }

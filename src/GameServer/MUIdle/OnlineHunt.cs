@@ -327,6 +327,11 @@ internal sealed class OnlineHunt : IHunter
         }
 
         var map = this._player.CurrentMap?.Definition.Name.ValueInNeutralLanguage;
+        if (experience > 0 || masterExperience > 0)
+        {
+            MUIdleHuntTracker.ReportKill(this._player);
+        }
+
         this.Statistics.AddExperience(experience, false);
         this.Statistics.AddExperience(masterExperience, true);
         this.Statistics.AddZenDelta(zen - spent);

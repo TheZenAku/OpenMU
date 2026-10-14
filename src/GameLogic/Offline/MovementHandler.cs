@@ -114,6 +114,13 @@ public sealed class MovementHandler
     }
 
     /// <summary>
+    /// MUIdle (HUNT v2): walks the player to a position, e.g. a drop to pick up.
+    /// </summary>
+    /// <param name="target">The position.</param>
+    /// <returns>True, if a walk was started; false, if there is no way or the player walks already.</returns>
+    public ValueTask<bool> WalkNearAsync(Point target) => this.WalkToAsync(target);
+
+    /// <summary>
     /// Walks the player to the specified target position.
     /// </summary>
     /// <param name="target">The target position to walk to.</param>

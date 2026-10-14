@@ -320,6 +320,35 @@ internal static class MUIdleHuntTracker
     /// <param name="map">The map it concerns; the current map when <c>null</c>.</param>
     public static void Report(Player player, HuntActivityKind kind, string? map = null)
     {
+        ReportCore(player, kind, map);
+    }
+
+    /// <summary>
+    /// HUNT v2: experience came in - a hunt "on its way" or idle hunts (the navigator reports the walks,
+    /// the kills on arrival went unsaid). Errands, trips and warps keep their activity.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    public static void ReportKill(Player player)
+    {
+        if (!Entries.TryGetValue(player, out var entry))
+        {
+            return;
+        }
+
+        HuntActivityKind kind;
+        lock (entry)
+        {
+            kind = entry.Kind;
+        }
+
+        if (kind is HuntActivityKind.Travelling or HuntActivityKind.Idle)
+        {
+            ReportCore(player, HuntActivityKind.Hunting, null);
+        }
+    }
+
+    private static void ReportCore(Player player, HuntActivityKind kind, string? map)
+    {
         map ??= player.CurrentMap?.Definition.Name.ValueInNeutralLanguage;
         var entry = Entries.GetValue(player, _ => new Entry());
         var now = DateTime.UtcNow;

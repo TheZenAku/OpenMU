@@ -2510,8 +2510,12 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <summary>MUIdle (HUNT v2): the grounds within this share of the best are all good choices (some spread over a map).</summary>
     private const double RichGroundShare = 0.85;
 
-    /// <summary>MUIdle (HUNT v2): the stay a walk to a ground is spread over.</summary>
-    private const double GroundStaySeconds = 600;
+    /// <summary>
+    /// MUIdle (HUNT v2): the stay a walk to a ground is spread over. A strong hunter clears a ground in a
+    /// minute or two and picks the next; at ten minutes a ground across the map counted almost as good
+    /// as the one next door, and test300Dk crossed Devias (200 tiles) between two grounds of the same monster.
+    /// </summary>
+    private const double GroundStaySeconds = 120;
 
     /// <summary>MUIdle (HUNT v2): monsters paying less than this share of the best ground are not worth the hunter's time (HuntingTargets).</summary>
     private const double WorthyShare = 0.5;

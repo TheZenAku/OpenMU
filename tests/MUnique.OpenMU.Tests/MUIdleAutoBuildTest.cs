@@ -38,6 +38,27 @@ public class MUIdleAutoBuildTest
         });
     }
 
+    /// <summary>
+    /// No stat goes past what the protocol carries (65 535, a 16-bit field): the rest of the points stay.
+    /// </summary>
+    [Test]
+    public async ValueTask StatsStopAtTheProtocolMaximumAsync()
+    {
+        var player = await PlayerTestHelper.CreatePlayerAsync().ConfigureAwait(false);
+        var character = player.SelectedCharacter!;
+        character.LevelUpPoints = 1_000_000;
+
+        await MUIdleAutoBuild.DistributeAsync(player, string.Empty).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(player.Attributes![Stats.BaseEnergy], Is.EqualTo(ushort.MaxValue));
+            Assert.That(player.Attributes[Stats.BaseAgility], Is.EqualTo(ushort.MaxValue));
+            Assert.That(player.Attributes[Stats.BaseVitality], Is.EqualTo(ushort.MaxValue));
+            Assert.That(character.LevelUpPoints, Is.GreaterThan(0));
+        });
+    }
+
     /// <summary>Each preset changes the main stat of its class only.</summary>
     [Test]
     public void PresetsChangeTheMainStat()

@@ -1859,6 +1859,20 @@ internal sealed class BotNavigator : AsyncDisposable
             return false;
         }
 
+        // MUIdle (HUNT v2): of the map's warp entries, the one landing nearest to its best spot - Devias,
+        // Lost Tower, Atlans and the like have several, and the first one left a long walk across the map.
+        if (this._policy.RateByExperience
+            && fare is not null
+            && targetMap is not null
+            && this.BestSpotOf(targetMap).Area is { } bestArea
+            && await this._player.GameContext.GetMapAsync((ushort)targetMap.Number).ConfigureAwait(false) is { } targetGameMap
+            && this.FindBestReachableLegalWarp(targetGameMap, new Point((byte)((bestArea.X1 + bestArea.X2) / 2), (byte)((bestArea.Y1 + bestArea.Y2) / 2)), this._cts.Token) is { Gate: { } nearGate } nearWarp
+            && this.CanAffordWarp(nearWarp))
+        {
+            fare = nearWarp;
+            targetGate = nearGate;
+        }
+
         return await this.WarpAsync(fare, targetGate, targetMap!, targetLevel, botLevel).ConfigureAwait(false);
     }
 

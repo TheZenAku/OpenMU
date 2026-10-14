@@ -23,6 +23,9 @@ using MUnique.OpenMU.PlugIns;
 /// </summary>
 internal static class MUIdleAutoBuild
 {
+    /// <summary>The largest stat the client can be told (an unsigned 16-bit field).</summary>
+    private const float ProtocolStatMaximum = ushort.MaxValue;
+
     /// <summary>
     /// The build presets a class can choose instead of its default (see <see cref="MUIdleSettings.BuildPreset"/>).
     /// </summary>
@@ -118,10 +121,12 @@ internal static class MUIdleAutoBuild
         }
 
         amount = Math.Min(amount, character.LevelUpPoints);
-        if (attribute.MaximumValue is { } maximum)
-        {
-            amount = (int)Math.Min(amount, Math.Max(0, maximum - attributes[attribute]));
-        }
+
+        // The game's own maximum, else what the protocol carries: a stat goes to the client as 16 bits, and
+        // past 65 535 it shows wrapped (test0Dl's two million strength read 37 438, 10-14). Points above
+        // stay unspent.
+        var maximum = attribute.MaximumValue ?? ProtocolStatMaximum;
+        amount = (int)Math.Min(amount, Math.Max(0, Math.Min(maximum, ProtocolStatMaximum) - attributes[attribute]));
 
         if (amount <= 0)
         {

@@ -544,6 +544,15 @@ public sealed class CombatHandler
         }
 
         await this.ExecuteAttackAsync(target, skill, false).ConfigureAwait(false);
+
+        // MUIdle (HUNT v2): a cast takes its time, as the combo's do - one tick of rest after each skill.
+        // Without it a caster cast on every 500 ms tick: two full skill effects a second on every client
+        // around it and an area's worth of hits each time, which stuttered the browser (10-14) and
+        // doubled the server's combat work per hunter.
+        if (skill is not null)
+        {
+            this._skillCooldownTicks = InterSkillDelayTicks;
+        }
     }
 
     private async ValueTask ExecuteAttackAsync(IAttackable target, SkillEntry? skillEntry, bool isCombo)

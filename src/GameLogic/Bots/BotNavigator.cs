@@ -2647,6 +2647,15 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private const double UnmeasuredMapMargin = 2.0;
 
+    /// <summary>MUIdle (HUNT v2): how often a hunt weighs the other maps (the escape from a barren one excepted).</summary>
+    private static readonly TimeSpan RicherMapCheckInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>MUIdle (HUNT v2): how long the rating of a map's best spot is kept (level, gear and observed damage change slowly).</summary>
+    private static readonly TimeSpan SpotRatingMemory = TimeSpan.FromSeconds(60);
+
+    private readonly Dictionary<short, (MonsterSpawnArea? Area, double Rate, DateTime AtUtc)> _spotRatings = [];
+    private DateTime _nextRicherMapCheckUtc = DateTime.MinValue;
+
     /// <summary>
     /// How long the bot walks after the same monster before it picks another one (it may be out of
     /// reach behind a wall, or keep running away).
@@ -2890,16 +2899,46 @@ internal sealed class BotNavigator : AsyncDisposable
     /// or any map that pays, when this one pays nothing (<paramref name="escape"/>). No spread over the
     /// runners-up: the owner wants the best map.
     /// </summary>
+    /// <summary>
+    /// MUIdle (HUNT v2): the best spot of a map and its experience per minute (HuntingSpotRating.BestSpot),
+    /// kept for <see cref="SpotRatingMemory"/>.
+    /// </summary>
+    private (MonsterSpawnArea? Area, double ExperiencePerMinute) BestSpotOf(GameMapDefinition map)
+    {
+        var now = DateTime.UtcNow;
+        if (this._spotRatings.TryGetValue(map.Number, out var kept) && now - kept.AtUtc < SpotRatingMemory)
+        {
+            return (kept.Area, kept.Rate);
+        }
+
+        var best = HuntingSpotRating.BestSpot(this._player, map);
+        this._spotRatings[map.Number] = (best.Area, best.ExperiencePerMinute, now);
+        return best;
+    }
+
     private bool TryPickRicherMap(bool escape, out WarpInfo warp, out GameMapDefinition mapDefinition, out int monsterLevel)
     {
         warp = default!;
         mapDefinition = default!;
         monsterLevel = 0;
 
+        // Weighing every map is the costliest thing a hunt does (each spot of each map rated): every
+        // 30 s, not on every evaluation of a hunter standing in its fight; an escape is not held back.
+        var nowUtc = DateTime.UtcNow;
+        if (!escape)
+        {
+            if (nowUtc < this._nextRicherMapCheckUtc)
+            {
+                return false;
+            }
+
+            this._nextRicherMapCheckUtc = nowUtc + RicherMapCheckInterval;
+        }
+
         var current = this._player.CurrentMap?.Definition;
         var measuredOf = this._policy.MeasuredExperiencePerMinute;
         double? Measured(GameMapDefinition map) => measuredOf?.Invoke(map.Name.ValueInNeutralLanguage);
-        var hereEstimate = current is null ? 0 : HuntingSpotRating.BestSpot(this._player, current).ExperiencePerMinute;
+        var hereEstimate = current is null ? 0 : this.BestSpotOf(current).ExperiencePerMinute;
         var hereMeasured = current is null ? null : Measured(current);
 
         // A map not measured yet is left only for one promising twice as much (UnmeasuredMapMargin): a
@@ -2913,7 +2952,7 @@ internal sealed class BotNavigator : AsyncDisposable
         {
             foreach (var map in this._player.GameContext.Configuration.Maps)
             {
-                if (Measured(map) is { } measured && HuntingSpotRating.BestSpot(this._player, map).ExperiencePerMinute is > 0 and var estimated)
+                if (Measured(map) is { } measured && this.BestSpotOf(map).ExperiencePerMinute is > 0 and var estimated)
                 {
                     ratios.Add(measured / estimated);
                 }
@@ -2937,7 +2976,7 @@ internal sealed class BotNavigator : AsyncDisposable
                 continue;
             }
 
-            var (area, estimate) = HuntingSpotRating.BestSpot(this._player, candidate);
+            var (area, estimate) = this.BestSpotOf(candidate);
             if (area is null)
             {
                 continue;

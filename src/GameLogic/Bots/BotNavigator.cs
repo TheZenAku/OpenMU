@@ -364,6 +364,13 @@ internal sealed class BotNavigator : AsyncDisposable
         : this(player, TimeProvider.System)
     {
         this._policy = policy;
+
+        // MUIdle (HUNT v2): a hunt started in a town takes the buff there before it leaves (bots keep their
+        // random first check, which spreads them out).
+        if (policy.RateByExperience)
+        {
+            this._nextBuffCheckUtc = DateTime.UtcNow;
+        }
     }
 
     /// <summary>
@@ -1372,6 +1379,15 @@ internal sealed class BotNavigator : AsyncDisposable
         {
             // No buff dialog NPC configured (data without an Elf Soldier) or the bot does not qualify
             // (already buffed, or outside the buff's level range): a no-op on such servers.
+            return false;
+        }
+
+        // MUIdle (HUNT v2): a hunt takes the buff only on the way - in a town which has the buff NPC (the
+        // start of a hunt, a respawn). No warp home for it, no town portal out of the field: the owner saw the
+        // hunt walk to the Elf Soldier, warp on and walk back across the map (10-14).
+        if (this._policy.RateByExperience
+            && (!inSafezone || BotBuffHandler.FindBuffNpcPosition(this._player, map) is null))
+        {
             return false;
         }
 

@@ -82,7 +82,7 @@ internal static class BotEquipmentHandler
     /// time.
     /// </summary>
     /// <returns><c>true</c> if the candidate is now equipped.</returns>
-    private static async ValueTask<bool> TryApplySwapAsync(Player player, IStorage inventory, Item item, EquipSwap plan)
+    internal static async ValueTask<bool> TryApplySwapAsync(Player player, IStorage inventory, Item item, EquipSwap plan)
     {
         var undo = new List<(Item Item, byte EquipSlot)>(2);
         foreach (var removed in plan.Removed)
@@ -278,5 +278,5 @@ internal static class BotEquipmentHandler
     /// A planned equip: the slot the candidate goes into, and the equipped pieces which have to come off
     /// for it (the gear in the target slot, plus the other hand's item when a two-handed weapon needs it).
     /// </summary>
-    private sealed record EquipSwap(byte Slot, IReadOnlyList<Item> Removed);
+    internal sealed record EquipSwap(byte Slot, IReadOnlyList<Item> Removed);
 }

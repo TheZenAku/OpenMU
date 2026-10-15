@@ -189,8 +189,9 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
             var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
             var current = MUIdleSettings.Parse(state.SettingsJson);
 
-            // The locks are only changed item by item (they reference items of this character).
+            // The locks are only changed one by one (they reference items and slots of this character).
             requested.LockedItems = current.LockedItems;
+            requested.LockedEquipSlots = current.LockedEquipSlots;
             requested.SellMaxItemLevel = Math.Clamp(requested.SellMaxItemLevel, 0, 15);
             requested.PreferredMap = requested.PreferredMap is { } map && player.GameContext.Configuration.Maps.Any(m => m.Number == map) ? map : null;
             requested.EventOptOut = requested.EventOptOut.Where(key => MUIdleEvents.Joinable.Any(t => MUIdleEvents.Key(t) == key)).Distinct().ToList();
@@ -211,17 +212,31 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
         await MUIdleSessions.SendStateAsync(player, await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Locks or unlocks: an equipment slot (0..11) itself - HUNT never changes it, also while empty - or the
+    /// item in a slot of the bag, which keeps its lock wherever the player moves it.
+    /// </summary>
     private async ValueTask LockItemAsync(RemotePlayer player, Character character, byte[] payload)
     {
         using var document = JsonDocument.Parse(payload);
         if (!document.RootElement.TryGetProperty("slot", out var slotElement)
-            || !slotElement.TryGetByte(out var slot)
-            || player.Inventory?.GetItem(slot) is not { } item)
+            || !slotElement.TryGetByte(out var slot))
         {
             return;
         }
 
         var locked = document.RootElement.TryGetProperty("locked", out var lockedElement) && lockedElement.ValueKind == JsonValueKind.True;
+        if (slot <= InventoryConstants.LastEquippableItemSlotIndex)
+        {
+            await this.LockEquipSlotAsync(player, character, slot, locked).ConfigureAwait(false);
+            return;
+        }
+
+        if (player.Inventory?.GetItem(slot) is not { } item)
+        {
+            return;
+        }
+
         var itemId = item.GetId();
         await player.RunPersistenceExclusiveAsync(async () =>
         {
@@ -240,6 +255,30 @@ public sealed class MUIdlePacketHandlerPlugIn : IPacketHandlerPlugIn
                 settings.LockedItems.Remove(itemId);
             }
 
+            state.SettingsJson = settings.ToJson();
+        }).ConfigureAwait(false);
+        await player.SaveProgressAsync().ConfigureAwait(false);
+        await MUIdleSessions.SendStateAsync(player, await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false)).ConfigureAwait(false);
+    }
+
+    private async ValueTask LockEquipSlotAsync(RemotePlayer player, Character character, byte slot, bool locked)
+    {
+        await player.RunPersistenceExclusiveAsync(async () =>
+        {
+            var state = await MUIdleSessions.GetOrCreateStateAsync(player, character).ConfigureAwait(false);
+            var settings = MUIdleSettings.Parse(state.SettingsJson);
+            settings.LockedEquipSlots.RemoveAll(s => s == slot || s < 0 || s > InventoryConstants.LastEquippableItemSlotIndex);
+            if (locked)
+            {
+                settings.LockedEquipSlots.Add(slot);
+            }
+            else if (player.Inventory?.GetItem(slot) is { } worn)
+            {
+                // The window shows a slot as locked while its item is: one click unlocks both.
+                settings.LockedItems.Remove(worn.GetId());
+            }
+
+            settings.LockedEquipSlots.Sort();
             state.SettingsJson = settings.ToJson();
         }).ConfigureAwait(false);
         await player.SaveProgressAsync().ConfigureAwait(false);

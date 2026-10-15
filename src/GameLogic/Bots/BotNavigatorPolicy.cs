@@ -153,6 +153,13 @@ public sealed record BotNavigatorPolicy
     public Func<string, double?>? MeasuredExperiencePerMinute { get; init; }
 
     /// <summary>
+    /// MUIdle: gets what looks after the character's bag every few seconds, on the MU Helper tick (the best
+    /// gear on, skill items learned, junk sold where the character stands); <c>null</c> for nothing. The
+    /// bots' own <see cref="GearProgression"/> stays separate.
+    /// </summary>
+    public Func<ValueTask>? TendInventory { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether any merchant business is allowed at all.
     /// </summary>
     public bool Shopping => this.SellJunk || this.BuyPotions || this.RepairAtMerchant || this.GearProgression;

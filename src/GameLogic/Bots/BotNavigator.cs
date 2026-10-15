@@ -842,6 +842,13 @@ internal sealed class BotNavigator : AsyncDisposable
             this._hunter.PendingBotActions.Enqueue(() => BotWingHandler.TryAdvanceWingsAsync(this._player));
         }
 
+        // MUIdle: the hunt's own care of the bag (gear, skill items, junk). Queued for the same reason.
+        if (this._policy.TendInventory is { } tendInventory && DateTime.UtcNow >= this._nextEquipCheckUtc)
+        {
+            this._nextEquipCheckUtc = DateTime.UtcNow + EquipCheckInterval;
+            this._hunter.PendingBotActions.Enqueue(tendInventory);
+        }
+
         // Keep the combat centre on the bot's current position, so the combat handler always engages
         // monsters right next to the bot - both at the hunting ground and while travelling through hostile
         // territory (self-defence). This is what keeps a travelling bot alive. The travel destination is

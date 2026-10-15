@@ -68,9 +68,39 @@ public sealed class MUIdleSettings
     public int SellMaxItemLevel { get; set; } = 4;
 
     /// <summary>
-    /// Gets or sets the identifiers of the items the player locked; they're never sold automatically.
+    /// Gets or sets the identifiers of the items the player locked; HUNT never sells, puts on or takes
+    /// off any of them (<see cref="MUIdleEquipment"/>, <see cref="MUIdleJunk"/>).
     /// </summary>
     public List<Guid> LockedItems { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets a value indicating whether HUNT puts on the best gear of the bag (<see cref="MUIdleEquipment"/>).
+    /// </summary>
+    public bool AutoEquip { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the equipment slots (0..11) the player keeps to themselves: HUNT never changes what
+    /// they hold, and leaves them empty when they are.
+    /// </summary>
+    public List<int> LockedEquipSlots { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets a value indicating whether orbs, scrolls and parchments the character cannot learn
+    /// (another class) or already knows count as junk (<see cref="MUIdleJunk"/>).
+    /// </summary>
+    public bool SellSkillItems { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the weaker potions (and apples) count as junk while the
+    /// stronger ones of their kind fill HUNT's potion stock, and ale and antidotes always.
+    /// </summary>
+    public bool SellWeakPotions { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether event materials below the character's event level count as
+    /// junk (a Devil's Eye +1 for a character past Devil Square 1).
+    /// </summary>
+    public bool SellOldEventItems { get; set; } = true;
 
     /// <summary>
     /// Gets or sets a value indicating whether HUNT enters an event when it opens and the character

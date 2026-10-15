@@ -513,7 +513,7 @@ internal static class BotShoppingHandler
         }
     }
 
-    private static int GetPotionStockTarget(Player player)
+    internal static int GetPotionStockTarget(Player player)
         => BotFeaturePlugIn.GetConfiguration(player.GameContext)?.GetEffectivePotionStockCharges() ?? 60;
 
     private static int GetCharges(Player player, ItemIdentifier[] kinds)

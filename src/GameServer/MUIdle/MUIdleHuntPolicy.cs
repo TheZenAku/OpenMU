@@ -63,7 +63,8 @@ internal static class MUIdleHuntPolicy
             BuyPotions = settings.AutoBuyPotions,
             RepairAtMerchant = settings.AutoRepair,
             DestroyUnsellable = false,
-            IsJunk = settings.IsJunk,
+            IsJunk = item => MUIdleJunk.IsJunk(player, item, MUIdleHuntTracker.GetSettings(player) ?? settings),
+            TendInventory = () => MUIdleBag.TendAsync(hunter, settings),
         };
     }
 

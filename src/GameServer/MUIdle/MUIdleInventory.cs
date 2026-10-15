@@ -318,7 +318,7 @@ internal static class MUIdleInventory
         var sold = 0;
         var zen = 0L;
         string? reason = null;
-        bool Keep(Item item) => locked.Contains(item.GetId()) || !CanBeSold(item) || (junkOnly && !settings.IsJunk(item));
+        bool Keep(Item item) => locked.Contains(item.GetId()) || !CanBeSold(item) || (junkOnly && !MUIdleJunk.IsJunk(player, item, settings));
 
         foreach (var slot in slots.Distinct())
         {
@@ -391,7 +391,7 @@ internal static class MUIdleInventory
     }
 
     /// <summary>
-    /// Sends the junk of the inventory (<see cref="MUIdleSettings.IsJunk"/>): its slots and what it sells for.
+    /// Sends the junk of the inventory (<see cref="MUIdleJunk.IsJunk"/>): its slots and what it sells for.
     /// The storage pages are kept: the player put those items there.
     /// </summary>
     /// <param name="player">The player.</param>
@@ -414,14 +414,68 @@ internal static class MUIdleInventory
 
     /// <summary>
     /// Gets the junk among the items: what lies in the bag (pages I-III), sells, isn't locked, and
-    /// <see cref="MUIdleSettings.IsJunk"/> calls junk.
+    /// <see cref="MUIdleJunk.IsJunk"/> calls junk.
     /// </summary>
     /// <param name="player">The player.</param>
     /// <param name="items">The inventory items.</param>
     /// <param name="settings">The idle settings (the locks and the junk rule).</param>
     /// <returns>The junk.</returns>
     public static IEnumerable<Item> Junk(Player player, IEnumerable<Item> items, MUIdleSettings settings)
-        => items.Where(item => IsBackpackSlot(player, item.ItemSlot) && CanBeSold(item) && settings.IsJunk(item));
+        => items.Where(item => IsBackpackSlot(player, item.ItemSlot) && CanBeSold(item) && MUIdleJunk.IsJunk(player, item, settings));
+
+    /// <summary>
+    /// HUNT sells the junk of the bag where the character stands, at the merchants' price - as the window
+    /// does (D33). A merchant trip only came when the bag was nearly full or the potions ran low: a strong
+    /// character with a big bag never went, and the bag filled with junk (owner, 10-15).
+    /// </summary>
+    /// <param name="player">The player (online, or an offline hunter).</param>
+    /// <param name="settings">The idle settings.</param>
+    /// <returns>The number of items sold.</returns>
+    public static async ValueTask<int> SellJunkHereAsync(Player player, MUIdleSettings settings)
+    {
+        if (!CanAct(player) || player.Inventory is not { } inventory)
+        {
+            return 0;
+        }
+
+        var sold = 0;
+        var zen = 0L;
+        foreach (var item in Junk(player, inventory.Items.ToList(), settings).ToList())
+        {
+            var slot = item.ItemSlot;
+            var price = (int)PriceCalculator.CalculateSellingPrice(item, item.Durability());
+            if (!player.TryAddMoney(price))
+            {
+                break;
+            }
+
+            await inventory.RemoveItemAsync(item).ConfigureAwait(false);
+            await player.PersistenceContext.DeleteAsync(item).ConfigureAwait(false);
+            await player.InvokeViewPlugInAsync<IItemRemovedPlugIn>(p => p.RemoveItemAsync(slot)).ConfigureAwait(false);
+            (player as HuntOfflinePlayer)?.Statistics.AddSoldItem();
+            sold++;
+            zen += price;
+        }
+
+        if (sold > 0)
+        {
+            player.Logger.LogInformation("MUIdle: HUNT of {Player} sold {Count} junk item(s) for {Zen} zen.", player.Name, sold, zen);
+            if (player is RemotePlayer remote)
+            {
+                await SendResultAsync(remote, "autoSell", sold, zen, null).ConfigureAwait(false);
+            }
+        }
+
+        return sold;
+    }
+
+    /// <summary>
+    /// Tells the player which piece HUNT put on (its equipment slot; the client names it).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="slot">The equipment slot.</param>
+    public static ValueTask SendEquippedAsync(RemotePlayer player, byte slot)
+        => SendResultAsync(player, "equip", slot, 0, null);
 
     /// <summary>
     /// Repairs the worn items, anywhere: at an open merchant for the merchant's price, else for the

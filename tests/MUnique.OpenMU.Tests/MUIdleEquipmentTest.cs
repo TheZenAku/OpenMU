@@ -24,6 +24,7 @@ public class MUIdleEquipmentTest
 {
     private const byte ArmorGroup = 8;
     private const byte SwordGroup = 0;
+    private const byte StaffGroup = 5;
 
     /// <summary>An armor with more defense than the worn one goes on; the old one goes to the bag.</summary>
     [Test]
@@ -132,6 +133,22 @@ public class MUIdleEquipmentTest
         Assert.That(MUIdleEquipment.IsUpgrade(player, withoutSkill, new MUIdleSettings()), Is.True);
     }
 
+    /// <summary>
+    /// A two-handed weapon replaces a one-handed one of its group (their slot types differ): a Dark
+    /// Wizard's Legendary Staff gave way to nothing better on 10-15 because of that.
+    /// </summary>
+    [Test]
+    public async ValueTask TwoHandedReplacesOneHandedOfItsGroupAsync()
+    {
+        var player = await CreatePlayerAsync().ConfigureAwait(false);
+        await WearAsync(player, Staff(player, 1, damage: 10), InventoryConstants.LeftHandSlot).ConfigureAwait(false);
+        var twoHanded = Staff(player, 2, damage: 40);
+        twoHanded.Width = 2;
+        var carried = await CarryAsync(player, twoHanded).ConfigureAwait(false);
+
+        Assert.That(MUIdleEquipment.IsUpgrade(player, carried, new MUIdleSettings()), Is.True);
+    }
+
     /// <summary>The kind of damage the character deals counts: a wizard's numbers are its wizardry.</summary>
     [Test]
     public void RateCountsTheStrongestDamage()
@@ -170,6 +187,9 @@ public class MUIdleEquipmentTest
 
     private static ItemDefinition Sword(Player player, short number, float damage)
         => Definition(player, SwordGroup, number, InventoryConstants.LeftHandSlot, (Stats.MinimumPhysBaseDmgByWeapon, damage), (Stats.MaximumPhysBaseDmgByWeapon, damage + 5));
+
+    private static ItemDefinition Staff(Player player, short number, float damage)
+        => Definition(player, StaffGroup, number, InventoryConstants.LeftHandSlot, (Stats.MinimumPhysBaseDmgByWeapon, damage), (Stats.MaximumPhysBaseDmgByWeapon, damage + 5));
 
     private static ItemDefinition Definition(Player player, byte group, short number, int slot, params (AttributeDefinition Target, float Value)[] powerUps)
     {

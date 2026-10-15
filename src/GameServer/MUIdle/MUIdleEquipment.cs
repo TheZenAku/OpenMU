@@ -79,12 +79,7 @@ internal static class MUIdleEquipment
         var replaced = string.Join(", ", best.Removed.Select(item => item.ToString()));
         if (await BotEquipmentHandler.TryApplySwapAsync(player, inventory, best.Item, new BotEquipmentHandler.EquipSwap(best.Slot, best.Removed)).ConfigureAwait(false))
         {
-            player.Logger.LogInformation(
-                "MUIdle: {Player} put on {Item} (score +{Gain:F3}){Replaced}.",
-                player.Name,
-                best.Item,
-                best.Gain,
-                replaced.Length == 0 ? string.Empty : $" instead of {replaced}");
+            player.Logger.LogInformation("MUIdle: {Player} put on {Item} (score +{Gain:F3}), off: {Replaced}.", player.Name, best.Item, best.Gain, replaced.Length == 0 ? "-" : replaced);
             return best.Slot;
         }
 
@@ -207,8 +202,10 @@ internal static class MUIdleEquipment
 
         if (currentDefinition is { Group: <= LastWeaponGroup })
         {
+            // The group is enough (a one-handed staff and a two-handed one are of one family): a bow and a
+            // crossbow, both group 4, go into different hands, and the other hand's ammunition stays.
             var sameFamily = (definition.Group <= LastMeleeGroup && currentDefinition.Group <= LastMeleeGroup)
-                             || (definition.Group == currentDefinition.Group && definition.ItemSlot == currentDefinition.ItemSlot);
+                             || definition.Group == currentDefinition.Group;
             var keepsSkill = !(current!.HasSkill && currentDefinition.Skill is not null) || (item.HasSkill && definition.Skill is not null);
             return sameFamily && keepsSkill;
         }

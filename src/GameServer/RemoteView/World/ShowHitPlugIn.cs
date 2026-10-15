@@ -24,6 +24,8 @@ public class ShowHitPlugIn : IShowHitPlugIn
 
     private readonly byte _operation;
 
+    private readonly ShowHitExtendedPlugIn _extended;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ShowHitPlugIn"/> class.
     /// </summary>
@@ -32,6 +34,7 @@ public class ShowHitPlugIn : IShowHitPlugIn
     {
         this._player = player;
         this._operation = this.DetermineOperation();
+        this._extended = new ShowHitExtendedPlugIn(player);
     }
 
     /// <remarks>
@@ -49,6 +52,15 @@ public class ShowHitPlugIn : IShowHitPlugIn
 
         if (this._player.Connection is not { } connection)
         {
+            return;
+        }
+
+        // MUIdle: past 16 bits a hit went out as one packet per 65 535 - with stats in the millions that
+        // was thousands of packets a hit (10-15: ~6 000 a second, the numbers came in heaps). The browser
+        // client reads the extended packet (32 bits, told apart by its length): one packet a hit.
+        if (hitInfo.HealthDamage > ushort.MaxValue || hitInfo.ShieldDamage > ushort.MaxValue)
+        {
+            await this._extended.ShowHitAsync(target, hitInfo).ConfigureAwait(false);
             return;
         }
 

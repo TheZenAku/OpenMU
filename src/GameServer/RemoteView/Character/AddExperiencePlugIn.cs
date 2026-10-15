@@ -21,15 +21,28 @@ public class AddExperiencePlugIn : IAddExperiencePlugIn
 {
     private readonly RemotePlayer _player;
 
+    private readonly AddExperienceExtendedPlugIn _extended;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="AddExperiencePlugIn"/> class.
     /// </summary>
     /// <param name="player">The player.</param>
-    public AddExperiencePlugIn(RemotePlayer player) => this._player = player;
+    public AddExperiencePlugIn(RemotePlayer player)
+    {
+        this._player = player;
+        this._extended = new AddExperienceExtendedPlugIn(player);
+    }
 
     /// <inheritdoc/>
     public async ValueTask AddExperienceAsync(int exp, IAttackable? obj, ExperienceType experienceType)
     {
+        // MUIdle: one extended packet (32 bits; the browser client reads it) instead of one per 65 535.
+        if (exp > ushort.MaxValue)
+        {
+            await this._extended.AddExperienceAsync(exp, obj, experienceType).ConfigureAwait(false);
+            return;
+        }
+
         var remainingExperience = exp;
         ushort damage = 0;
         if (obj is not null && obj.Id != obj.LastDeath?.KillerId)

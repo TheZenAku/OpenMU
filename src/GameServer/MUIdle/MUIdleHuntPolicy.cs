@@ -38,6 +38,8 @@ internal static class MUIdleHuntPolicy
 
             // HUNT v2: maps and grounds by the experience per minute they promise (HuntingSpotRating).
             RateByExperience = true,
+            // No trip and no warp in the middle of a fight (a teleport away from the monster being hit).
+            WaitOutFights = true,
 
             // Manual: never changes maps. Auto: the navigator's own choice. A pinned map: there, when it can.
             WarpBetweenMaps = settings.AutoMapSelection || settings.PreferredMap is not null,

@@ -136,6 +136,12 @@ internal sealed class BotNavigator : AsyncDisposable
     /// </summary>
     private const int TravelStopRange = HuntingRange;
 
+    /// <summary>MUIdle: how near a monster after the character makes a fight (a ranged one hits from there).</summary>
+    private const byte FightRange = 6;
+
+    /// <summary>MUIdle: below this share of its health a character may still leave a fight by a warp (an escape).</summary>
+    private const float EscapeHealthShare = 0.35f;
+
     /// <summary>How close to a rally point (a world boss) the bot walks before it fights there.</summary>
     private const double RallyRange = 6;
 
@@ -909,7 +915,8 @@ internal sealed class BotNavigator : AsyncDisposable
                 if (this._timeProvider.GetUtcNow() >= this._nextRallyReachCheckUtc)
                 {
                     this._nextRallyReachCheckUtc = this._timeProvider.GetUtcNow() + FollowWarpSearchCooldown;
-                    if (this.WalkingDistance(map, this._player.Position, rally.Spot, cancellationToken) is null
+                    if (!this.MustWaitOutFight()
+                        && this.WalkingDistance(map, this._player.Position, rally.Spot, cancellationToken) is null
                         && this._timeProvider.GetUtcNow() - this._lastWarpUtc >= FollowWarpCooldown
                         && this.FindBestReachableLegalWarp(map, rally.Spot, cancellationToken) is { Gate: { } floorGate } floorWarp
                         && this.CanAffordWarp(floorWarp))
@@ -983,10 +990,13 @@ internal sealed class BotNavigator : AsyncDisposable
             }
         }
 
+        // MUIdle: no trip and no warp in the middle of a fight; the combat handler ends it first.
+        var waitOutFight = this.MustWaitOutFight();
+
         // A shopping trip (selling junk loot, restocking potions with Zen) runs before everything else,
         // so it completes even for party members - the follow logic below would otherwise pull them
         // back to the leader mid-trade.
-        if (this._policy.Shopping && await this.TryShoppingAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
+        if (!waitOutFight && this._policy.Shopping && await this.TryShoppingAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
         {
             return;
         }
@@ -994,13 +1004,13 @@ internal sealed class BotNavigator : AsyncDisposable
         // A buff trip (claiming the free defense/damage buff a dialog NPC like the Elf Soldier offers)
         // is an errand like shopping - it also completes even for party members, and does not mix with
         // the follow logic below pulling the bot back to the leader mid-visit.
-        if (this._policy.BuffTrips && await this.TryBuffTripAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
+        if (!waitOutFight && this._policy.BuffTrips && await this.TryBuffTripAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
         {
             return;
         }
 
         // An errand at an NPC (a quest at its giver) comes before farming on - after the logistics.
-        if (this._policy.Errand is not null && await this.TryErrandAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
+        if (!waitOutFight && this._policy.Errand is not null && await this.TryErrandAsync(map, inSafezone, cancellationToken).ConfigureAwait(false))
         {
             return;
         }
@@ -1748,6 +1758,10 @@ internal sealed class BotNavigator : AsyncDisposable
         // like an illegal one, instead of being stuck there.
         var requirementLost = currentMap is not null && currentMap.TryGetRequirementError(this._player, out _);
         var mustEscape = mapIsHostile || mapIsIllegal || requirementLost;
+        if (!mustEscape && this.MustWaitOutFight())
+        {
+            return false;
+        }
 
         // A map can pass every check above and still pay the bot nothing: the safe monsters are a rare
         // kind among ones it must refuse, or stronger bots empty the grounds before it arrives. The bot
@@ -2012,6 +2026,32 @@ internal sealed class BotNavigator : AsyncDisposable
     /// <summary>
     /// MUIdle (HUNT v2): the monsters which stop a travel walk - safe ones the hunt would fight, within reach.
     /// </summary>
+    /// <summary>
+    /// MUIdle (<see cref="BotNavigatorPolicy.WaitOutFights"/>): whether the character is in a fight - a live
+    /// monster near it has it as its target - with health enough to see it through. Low on health, a warp
+    /// out of it is an escape and may go.
+    /// </summary>
+    private bool MustWaitOutFight()
+    {
+        if (!this._policy.WaitOutFights
+            || this._player.CurrentMap is not { } map
+            || this._player.IsAtSafezone()
+            || this._player.Attributes is not { } attributes)
+        {
+            return false;
+        }
+
+        var maximumHealth = attributes[Stats.MaximumHealth];
+        if (maximumHealth > 0 && attributes[Stats.CurrentHealth] < maximumHealth * EscapeHealthShare)
+        {
+            return false;
+        }
+
+        return map.GetAttackablesInRange(this._player.Position, FightRange)
+            .OfType<Monster>()
+            .Any(monster => monster.IsAlive && monster.IsTargetingPlayer(this._player));
+    }
+
     private int CountMonstersToStopFor(GameMap map)
     {
         return map.GetAttackablesInRange(this._player.Position, TravelStopRange)

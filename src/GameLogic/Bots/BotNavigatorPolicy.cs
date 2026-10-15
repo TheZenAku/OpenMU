@@ -146,6 +146,14 @@ public sealed record BotNavigatorPolicy
     public bool RateByExperience { get; init; }
 
     /// <summary>
+    /// MUIdle: gets a value indicating whether a trip (merchant, buff, errand) or a warp to another map
+    /// waits for the end of a fight (<see cref="BotNavigator"/>'s fight check): a warp in the middle of
+    /// one looked like the hero teleporting away from the monster it was hitting (owner, 10-15). An
+    /// escape (low health, a hostile or forbidden map) still goes at once. Bots warp as before.
+    /// </summary>
+    public bool WaitOutFights { get; init; }
+
+    /// <summary>
     /// MUIdle (HUNT v2): gets the experience per minute the character really earned on a map (by map
     /// name), once it hunted there long enough; <c>null</c> before. With <see cref="RateByExperience"/>
     /// the measure decides over the estimate, and the estimate is scaled by what the measures showed.
